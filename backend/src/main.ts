@@ -19,9 +19,9 @@ app.use(bodyParser.urlencoded({
 app.use(bodyParser.json());
 
 app.use(cors({
-  "origin": "*",
+  "origin": "https://eucan.ddns.net",
   "methods": "GET,POST,OPTIONS",
-  "preflightContinue": false,
+  "credentials": true,             // MUST be true if sending cookies/sessions
   "optionsSuccessStatus": 204
 }));
 
