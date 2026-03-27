@@ -20,11 +20,11 @@ RUN apk add --no-cache \
 
 # Download the Headers More module source
 ENV HEADERS_MORE_VERSION=0.37
-RUN curl -fSL "https://github.com/openresty/headers-more-nginx-module/archive/v${HEADERS_MORE_VERSION}.tar.gz" -o headers-more.tar.gz \
+RUN curl -4 -fSL "https://github.com/openresty/headers-more-nginx-module/archive/v${HEADERS_MORE_VERSION}.tar.gz" -o headers-more.tar.gz \
   && tar -zxC /tmp -f headers-more.tar.gz
 
 # Download Nginx source matching the running Nginx version
-RUN curl -fSL "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz" -o nginx.tar.gz \
+RUN curl -4 -fSL "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz" -o nginx.tar.gz \
   && tar -zxC /tmp -f nginx.tar.gz
 
 # Compile the module
