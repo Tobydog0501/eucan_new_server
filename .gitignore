@@ -1,0 +1,15 @@
+backend/package-lock.json
+backend/data.db
+backend/node_modules
+backend/.env
+backend/databases
+backend/logs
+backend/proofs
+backend/temp
+backend/server
+backend/api
+backend/calendars
+backend/clock
+backend/build
+backend/main.js
+frontend/logs

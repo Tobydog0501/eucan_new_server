@@ -1,0 +1,618 @@
+import crypto from "crypto";
+import Database from "better-sqlite3";
+import logger from './logger'
+import  { userinfo,dayoffinfo,clockinrecord,requestquery,logininfo,digit,dayofftype, dayoffinfo_ret } from "../types/types";
+import { join } from "path";
+// const logger = require("./logger.js");
+const log:logger = new logger(`./logs/${new Date().toISOString().split('T')[0]}.log`);
+
+export class sql{
+
+    private login_db:Database.Database;
+
+    public constructor(){
+        this.login_db = new Database('./databases/loginDatabase.db');
+        this.login_db.pragma('journal_mode = WAL');
+        log.logFormat("Database is connected with server.",new Date());
+    }
+
+    login(user:string,pwd:string|null,cookie:string|null):{msg:string,accountType?:string,sessionKey?:string,name?:string}{
+        if(cookie!==null){
+            if(user.match(/['"?><:;\\|)(*&^%$#@!~`]/)||cookie.match(/['"?><:;\\|)(*&^%$#@!~`]/)||cookie.match(/['"?><:;\\|)(*&^%$#@!~`]/)){
+                return {msg:"wrong type"};
+            }
+        }
+        const currentTime:Date = new Date();
+        const sqldata:userinfo|undefined = (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ? `).get(user) as userinfo|undefined);
+        const loginHashData:logininfo|undefined = (this.login_db.prepare(`SELECT * FROM logininfo WHERE id= ?;`).get(user) as logininfo|undefined);
+
+        
+        if (sqldata==undefined){
+            log.logFormat(`Someone failed to log in with an incorrect account.`,currentTime);
+            return {msg:"wrong account"};
+        }
+
+        if(sqldata["status"]==0){
+            log.logFormat(`${user} tried to log in but the account is marked as resigned.`,currentTime);
+            return {msg:"resigned account"};
+        }
+        
+        // cookie here must be stripped.
+        // accepted types: null, string.
+        var hash:string = "";
+        var expired:boolean = false;
+        if(cookie&&loginHashData!=undefined){   // if u got a cookie, there must be ur data in the database.
+            const ret:null|object = this.checkHash(user,cookie);
+            if (ret&&user!="monitor"){
+                log.logFormat(`${user} has logined with cookie successfully.`);
+                return {msg:"success",accountType:sqldata["type"],sessionKey:hash,name:sqldata["name"]};
+            }
+            else expired=true;
+        }
+        if(pwd==sqldata["pwd"]){
+            // Checking database if the user have logined before.
+            if(loginHashData==undefined){
+                // Generating hash.
+                hash = crypto.randomBytes(5).toString('hex');
+                while(this.login_db.prepare(`SELECT * FROM logininfo WHERE sKey= ?;`).get(hash)){
+                    hash = crypto.randomBytes(5).toString('hex');
+                }
+                this.login_db.prepare(`INSERT INTO logininfo (id,sKey) VALUES (?,?);`).run(user,hash);
+            }else{
+                // hash expired.
+                hash = crypto.randomBytes(5).toString('hex');
+                while(this.login_db.prepare(`SELECT * FROM logininfo WHERE sKey= ?;`).get(hash)){
+                    hash = crypto.randomBytes(5).toString('hex');
+                }
+                this.login_db.prepare(`UPDATE logininfo SET createTime = strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'),sKey= ? WHERE id= ?;`).run(hash,user);
+            }
+            if(user!="monitor")
+                log.logFormat(`${user} has logined with password successfully.`,currentTime);
+            return {msg:"success",accountType:sqldata["type"],sessionKey:hash,name:sqldata["name"]};
+        }else{ 
+            log.logFormat(`${user} Failed to log in with password: ${pwd}`,currentTime);
+            return {msg:"wrong pwd"};
+        }
+    }
+
+    /**
+     * 
+     * @returns {Array<object>}
+     */
+    getAllUsers():userinfo[]{
+        const data = (this.login_db.prepare(`SELECT * FROM userinfo;`).all() as userinfo[]);
+        return data;
+    }
+
+    getEmployeeDayOffList(user:string,year:string):null|dayoffinfo_ret{
+        try{
+            const userinfo = (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ?;`).get(user) as userinfo);
+            const joinTime = userinfo["joinTime"];
+            if(joinTime.split('-')[0]==year){
+                const rq_all = (this.login_db.prepare(`SELECT * FROM requestquery WHERE id= ? AND year= ? AND state=1;`).all(user,year) as requestquery[]|undefined);
+                const joinMonth = parseInt(userinfo.joinTime.split("-")[1]);
+                const joinDay = parseInt(userinfo.joinTime.split("-")[2]);
+                var first_half:dayoffinfo = {
+                    id: user,
+                    annual: 0,
+                    personal: 0,
+                    care: 0,
+                    sick:0,
+                    wedding:0,
+                    funeral:0,
+                    birth:0,
+                    pcheckup:0,
+                    miscarriage:0,
+                    paternity:0,
+                    maternity:0,
+                    official:0,
+                    typhoon:0,
+                    other:0,
+                    total:0,
+                    year:year
+                };
+                var second_half:dayoffinfo = {
+                    id: user,
+                    annual: 0,
+                    personal: 0,
+                    care: 0,
+                    sick:0,
+                    wedding:0,
+                    funeral:0,
+                    birth:0,
+                    pcheckup:0,
+                    miscarriage:0,
+                    paternity:0,
+                    maternity:0,
+                    official:0,
+                    typhoon:0,
+                    other:0,
+                    total:0,
+                    year:year
+                };
+                const table = {
+                    "特休假":"annual",
+                    "事假":"personal",
+                    "家庭照顧假":"care",
+                    "病假":"sick",
+                    "婚假":"wedding",
+                    "喪假":"funeral",
+                    "分娩假":"birth",
+                    "產檢假":"pcheckup",
+                    "流產假":"miscarriage",
+                    "陪產假":"paternity",
+                    "產假":"maternity",
+                    "公假":"official",
+                    "停班停課":"typhoon",
+                    "其他":"other"
+                };
+                rq_all?.forEach((v:requestquery,i,a)=>{
+                    const reqMonth = parseInt(v.month);
+                    const reqYear = parseInt(v.start.split("-")[0]);
+                    const joinYear = parseInt(userinfo.joinTime.split("-")[0]);
+                    const monthDiff = (reqYear - joinYear) * 12 + (reqMonth - joinMonth);
+                    console.log(`Month diff: ${monthDiff}`);
+                    if (monthDiff < 6) {
+                        (first_half[table[v.type as keyof dayofftype] as keyof dayoffinfo] as number) += v.totalTime;
+                    } else if (monthDiff === 6) {
+                        // Split totalTime between first_half and second_half based on day boundary.
+                        (parseInt(v["start"].split("-")[2]) < joinDay) ? (first_half[table[v.type as keyof dayofftype] as keyof dayoffinfo] as number) += v.totalTime : (second_half[table[v.type as keyof dayofftype] as keyof dayoffinfo] as number) += v.totalTime;
+                    } else {
+                        (second_half[table[v.type as keyof dayofftype] as keyof dayoffinfo] as number) += v.totalTime;
+                    }
+                })
+                // const dayoffData_LF = (this.login_db.prepare(`SELECT * FROM dayoffinfo WHERE id='${user}' AND year='${year}';`).all()[0] as dayoffinfo|undefined);
+                return {"separate":true,"data":[first_half,second_half]};
+            }else{
+                const df = (this.login_db.prepare(`SELECT * FROM dayoffinfo WHERE id= ? AND year= ?;`).all(user,year) as dayoffinfo[]);
+                if(df.length==0){
+                    this.login_db.prepare(`INSERT INTO dayoffinfo (id,year) VALUES (?,?);`).run(user,year);
+                    return {"separate":false,"data":[(this.login_db.prepare(`SELECT * FROM dayoffinfo WHERE id= ? AND year= ?;`).get(user,year) as dayoffinfo)]};
+                }else{
+                    return {"separate":false,"data":[df[0]]};
+                }
+            }
+            
+        }catch{
+            return null;
+        }
+    }
+
+    register(user:string,password:string,mail:string,name:string,type:string,jointime:string,mgroup:digit,permit:digit):void{
+        // id,pwd,type,email,name,type,mgroup
+        this.login_db.prepare(`INSERT INTO userinfo (id,pwd,type,email,name,joinTime,mgroup,permit) VALUES (?,?,?,?,?,(strftime('%Y-%m-%d',?)),?,?);`).run(user,password,type,mail,name,jointime,mgroup,permit);
+        return;
+    }
+
+    modify(user:string,year:digit,dayoff:string){
+        const table = {
+            "特休假":"annual",
+            "事假":"personal",
+            "家庭照顧假":"care",
+            "病假":"sick",
+            "婚假":"wedding",
+            "喪假":"funeral",
+            "分娩假":"birth",
+            "產檢假":"pcheckup",
+            "流產假":"miscarriage",
+            "陪產假":"paternity",
+            "產假":"maternity",
+            "公假":"official",
+            "颱風假":"typhoon",
+            "其他":"other"
+        };
+        const entries:[string, string][] = Object.entries(dayoff)
+        const query:string[] = entries.map((v,i,a)=>{
+            return `${v[0]} = ?`;
+        });
+        // console.log(query.join(","))
+        this.login_db.prepare(`UPDATE dayoffinfo SET ${query.join(",")} WHERE id= ? AND year= ?`).run(user, year.toString());
+        return;
+
+    }
+
+    /**
+     * 
+     * @param {string} user 
+     * @param {string} cookie 
+     * @returns 
+     */
+    checkHash(user:string,cookie:string):{msg:string,accountType:string,sessionKey:string}|null{
+        if(user.match(/['"?><:;\\|)(*&^%$#@!~`]/)||cookie.match(/['"?><:;\\|)(*&^%$#@!~`]/)){
+            return null;
+        }
+        const sqldata = (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ? `).get(user) as userinfo);
+        const loginHashData = (this.login_db.prepare(`SELECT * FROM logininfo WHERE id= ?;`).get(user) as logininfo);
+        const current:Date = new Date();
+        const lastLogin = Date.parse(loginHashData["createTime"]);
+        const DateLastLogin = new Date(lastLogin);
+
+        if(((current.getTime()-DateLastLogin.getTime())/1000/60/60)<=1){    // Caculating the elapsed time
+            // if elapsed time <= 1 hr
+            if (loginHashData["sKey"]==cookie){
+                // if cookie correct.
+                this.login_db.prepare(`UPDATE logininfo SET createTime = strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours') WHERE id= ?;`).run(user);
+                return {msg:"success",accountType:sqldata["type"],sessionKey:cookie};
+            }else{
+                return null;
+            }
+        }else{  // if elapsed time > 1 hr
+            // log.logFormat(`${user} tried to login with cookie but it had expired.`,current);
+            return null;
+        }
+    }
+
+    init(user:string,year?:digit|undefined){
+        // {
+        //     "annual":0,
+        //     "personal":0,
+        //     "care":0,
+        //     "sick":0,
+        //     "wedding":0,
+        //     "funeral":0,
+        //     "birth":0,
+        //     "pcheckup":0,
+        //     "miscarriage":0,
+        //     "paternity":0,
+        //     "maternity":0,
+        //     "official":0,
+        //     "typhoon":0,
+        //     "other":0,
+        //     "total":0,
+        //     "year":0,
+        // }
+        // ["annual","personal","care","sick","wedding","funeral","birth","pcheckup","miscarriage","paternity","maternity","other","total","year"]
+
+        try{
+            if(year != undefined){
+                this.login_db.prepare(`SELECT * FROM dayoffinfo WHERE id= ? AND year= ?;`).get(user,year);
+                this.login_db.prepare(`DELETE FROM dayoffinfo WHERE id= ? AND year= ?;`).run(user,year);
+                this.login_db.prepare(`INSERT INTO dayoffinfo (id,year) VALUES (?,?);`).run(user,year);
+            }else{
+                throw new Error("cant find the user");
+            }
+        }catch(e){
+            this.login_db.prepare(`INSERT INTO dayoffinfo (id) VALUES (?);`).run(user);
+            log.logFormat(`${user}'s dayoffinfo has been initialize.`,new Date());
+        }
+
+    }
+
+    /**
+     * Get dayoff info
+     * @param {*} user 
+     * @param {*} year 
+     * @returns 
+     */
+    dayoff(user:string,year:digit):dayoffinfo|null{
+        try{
+            const sqldata = (this.login_db.prepare(`SELECT * FROM dayoffinfo WHERE id= ? AND year= ? `).get(user,year) as dayoffinfo| undefined);
+            // console.log(sqldata);
+            if (sqldata===undefined) return null;
+            return sqldata;
+        }catch(e){
+            console.warn(e);
+            return null;
+        }
+    }
+
+    /**
+     * 
+     * @param {*} user 
+     * @param {*} type 
+     * @param {*} start 
+     * @param {*} end 
+     * @returns 
+     */
+    newRequest(user:string,type:string,start:string,end:string,totalTime:digit,reason:string):{mgroup:digit,name:string,num:string}|null{
+        const query:userinfo = (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ? `).get(user) as userinfo);
+        const checkpoint:Date = new Date(`${end.split("-")[0]}-${query["joinTime"].substring(5)}`);
+        const endDate:Date = new Date(end.split(" ")[0]);
+        const year:string = checkpoint>endDate?(parseInt(end.split("-")[0])-1).toString():end.split("-")[0];
+        const currentYear:number = new Date().getFullYear();
+        const month:number = parseInt(start.split("-")[1]);
+        const serials:requestquery[]|[] = (this.login_db.prepare(`SELECT serialnum FROM requestquery WHERE serialnum LIKE ? ORDER BY serialnum ASC`).all(`${currentYear}%`) as requestquery[]|[]);
+        const count:string = serials[serials.length-1]?`${currentYear}${(parseInt(serials[serials.length-1]["serialnum"].substring(4))+1).toString().padStart(4,'0')}`:`${currentYear}0000`;
+        const name:string = query["name"];
+        const new_reason:string = reason.replace("<","").replace(">","").replace('"','');
+        
+        const {m,d} = calculate(new Date(start),new Date(end));
+        if(this.checkRemainAnnual(user,parseInt(year),parseInt(`${totalTime}`),m<6)==false){
+            log.logFormat(`${user} try to request a dayoff but exceed annual quota.`);
+            return null;
+        }
+        
+        this.login_db.prepare(`INSERT INTO requestquery (serialnum,id,name,type,start,end,mgroup,totalTime,reason,month,year) VALUES (?,?,?,?,(strftime('%Y-%m-%d %H:%M',?)),(strftime('%Y-%m-%d %H:%M',?)),?,?,?,?,?);`).run(count,user,name,type,start,end,query["mgroup"],totalTime,new_reason,month,year);
+        log.logFormat(`${user} just request a new dayoff. Ticket id: #${count}.`,new Date())
+        return {"mgroup":query["mgroup"],"name":name,"num":count};
+    }
+
+    showQuery(user:string,state:number=0,search_query:string="",limit_query:string=""):requestquery[]|[]{
+        // const mgroup = this.login_db.prepare(`SELECT * FROM userinfo WHERE id='${user}'`).all()[0]["mgroup"];
+        const query:requestquery[]|[] = (this.login_db.prepare(`SELECT serialnum,name,type,start,end,reason,totalTime FROM requestquery WHERE state= ? ${search_query} ${limit_query};`).all(state) as requestquery[]|[]);
+        // log.logFormat(`showquery executed with query: SELECT serialnum,name,type,start,end,reason,totalTime FROM requestquery WHERE state=${state} ${search_query} ${limit_query};`);
+        return query;
+    }
+
+    setPermit(num:string,state:number):string{
+        const query = (this.login_db.prepare(`SELECT * FROM requestquery WHERE serialnum= ? `).get(num) as requestquery);
+        const year:string = query["year"];
+        const table = {
+            "特休假":"annual",
+            "事假":"personal",
+            "家庭照顧假":"care",
+            "病假":"sick",
+            "婚假":"wedding",
+            "喪假":"funeral",
+            "分娩假":"birth",
+            "產檢假":"pcheckup",
+            "流產假":"miscarriage",
+            "陪產假":"paternity",
+            "產假":"maternity",
+            "公假":"official",
+            "停班停課":"typhoon",
+            "其他":"other"
+        };
+        
+        if(state==1) {
+            if( this.login_db.prepare(`SELECT * FROM dayoffinfo WHERE id= ? AND year= ?;`).get(query["id"],year)){ 
+                // log.logFormat(`Updating dayoffinfo with query: UPDATE dayoffinfo SET ${table[(query["type"] as keyof dayofftype)]}=${table[(query["type"] as keyof dayofftype)]}+${query["totalTime"]} WHERE id='${query["id"]}' AND year='${year}';`);
+                this.login_db.prepare(`UPDATE dayoffinfo SET ${table[(query["type"] as keyof dayofftype)]}=${table[(query["type"] as keyof dayofftype)]}+? WHERE id= ? AND year= ?;`).run(query["totalTime"],query["id"],year); 
+            }else{
+                // log.logFormat("Initializing the data...");
+                this.init(query["id"],year);
+                // log.logFormat(`Updating dayoffinfo with query: UPDATE dayoffinfo SET ${table[(query["type"] as keyof dayofftype)]}=${table[(query["type"] as keyof dayofftype)]}+${query["totalTime"]} WHERE id='${query["id"]}' AND year='${year}';`);
+                this.login_db.prepare(`UPDATE dayoffinfo SET ${table[(query["type"] as keyof dayofftype)]}=${table[(query["type"] as keyof dayofftype)]}+? WHERE id= ? AND year= ?;`).run(query["totalTime"],query["id"],year); 
+            }
+        }
+        this.login_db.prepare(`UPDATE requestquery SET state= ? WHERE serialnum= ?;`).run(state,num); 
+        log.logFormat(`Dayoff ticket #${num} has been set to ${state?"accepted":"denied"}.`);
+        return (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ? `).get(query["id"]) as userinfo)["email"]; 
+    }
+
+    /**
+     * The function check if the user requires the permission to have a dayoff
+     * @param {*} user 
+     * @returns {number|null} 1 means require a permission
+     */
+    getPermission(user:string):userinfo["permit"]|null{
+        const query = (this.login_db.prepare(`SELECT permit FROM userinfo WHERE id= ? `).get(user) as userinfo|undefined); 
+        if(query) return query["permit"];
+        return null
+    }
+
+    clockinAction(user:string,type:number,now:Date):clockinrecord[]|{status:digit}|null{
+        const year:number = now.getFullYear();
+        const month:digit = now.getMonth()+1>9?(now.getMonth()+1):'0'+(now.getMonth()+1).toString();
+        const date:digit = now.getDate()>9?(now.getDate()):'0'+(now.getDate()).toString();
+        const hour:string = now.getHours()>9?(now.getHours().toString()):'0'+(now.getHours()).toString();
+        const min:digit = now.getMinutes()>9?(now.getMinutes()):'0'+(now.getMinutes()).toString();
+        var datetime:string;
+        if(parseInt(hour)>=18){
+            datetime = `${year}-${month}-${date} 18:00`;
+        }else{
+            datetime = `${year}-${month}-${date} ${hour}:${min}`;
+        }
+        const data:clockinrecord[] = (this.login_db.prepare(`SELECT * FROM clockinrecord WHERE date= ? AND id= ?;`).all(datetime.split(" ")[0],user) as clockinrecord[]); 
+        if(type==0){
+            return data;
+        }
+        const name:string = (this.login_db.prepare(`SELECT name FROM userinfo WHERE id= ?;`).get(user) as userinfo)["name"]; 
+        if(data.length!=0){
+            // exists, use UPDATE
+            // if(data[0][`clock${type==1?"in":"out"}`]) return null;
+            let i:number = 0;
+            for(i;i<data.length;i++){
+                if(data[i][`clock${type==1?"in":"out"}`]) continue
+                else break;
+            }
+            if(i<data.length){
+                // UPDATE
+                this.login_db.prepare(`UPDATE clockinrecord SET clock${type==1?"in":"out"}= ? WHERE id= ? AND num= ? AND date= ?;`).run(datetime.split(" ")[1],user,i+1,datetime.split(" ")[0]); 
+                return {"status":200};                
+            }
+            this.login_db.prepare(`INSERT INTO clockinrecord (id,name,date,clock${type==1?"in":"out"},num) VALUES (?,?,?,?,?);`).run(user,name,datetime.split(" ")[0],datetime.split(" ")[1],i+1); 
+            // while() i++;
+            // if(data[])
+        }else{
+            // use INSERT
+            this.login_db.prepare(`INSERT INTO clockinrecord (id,name,date,clock${type==1?"in":"out"},num) VALUES (?,?,?,?,?);`).run(user,name,datetime.split(" ")[0],datetime.split(" ")[1],1); 
+        }
+        return {"status":200};
+    }
+
+    showPersonalQuery(user:string,year:string):requestquery[]|[]{
+        const query = (this.login_db.prepare(`SELECT serialnum,name,type,start,end,reason,totalTime,state FROM requestquery WHERE id= ? AND year= ? `).all(user,year) as requestquery[]|[]); 
+        return query;
+    }
+
+    deleteAccount(user:string):void{
+        this.login_db.prepare(`DELETE FROM userinfo WHERE id= ? `).run(user); 
+        return;
+    }
+
+    calculateAnnualQuota(user:string,year:digit):{separate:boolean,data:{quota:number,years:number,month:number,days:number,joinTime:string}[]} {
+        const db_jt:string = (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ? `).get(user) as userinfo)["joinTime"]; 
+        const joinTime:Date = new Date(db_jt);
+        const month:number = parseInt(db_jt.split("-")[1]);
+        const endTime:Date = month==-1?new Date(`${year}-${db_jt.split("-")[1]}-${db_jt.split("-")[2]}`):new Date(`${year}-${month}-${db_jt.split("-")[2]}`);
+        const elapse:{m:number,d:number} = calculate(joinTime,endTime);
+        const months = elapse['m'], days = elapse['d'];
+        const years = months/12;
+        const realMonth:number = (months-(Math.floor(years)*12));
+        var quota:number=0;
+        console.log(`Calculating annual quota for ${user} in ${year}-${month}. Join time: ${db_jt}, Elapsed: ${years} years, ${realMonth} months, ${days} days.`);
+        if(years<1){
+            return {separate:true,data:[{"quota":0,"years":Math.floor(years)+(realMonth<6?0:0.5),"month":realMonth,"days":days,"joinTime":db_jt},{"quota":3*8,"years":Math.floor(years)+(realMonth<6?0:0.5),"month":6,"days":days,"joinTime":db_jt}]};
+        }else if(years>=1&&years<2){
+            quota = 7;
+        }else if(years>=2&&years<3){
+            quota = 10;
+        }else if(years>=3&&years<5){
+            quota = 14;
+        }else if(years>=5&&years<10){
+            quota = 15;
+        }else if(years>=10){
+            const w = Math.floor(years)+6;
+            quota = (w>=30?30:w);
+        }
+        
+        return {separate:false,data:[{"quota":quota*8,"years":Math.floor(years)+(realMonth<6?0:0.5),"month":realMonth,"days":days,"joinTime":db_jt}]};
+
+    }
+
+    showQueryInMonth(year:number,month:number):requestquery[]|[]{
+        const query = (this.login_db.prepare(`SELECT name,start,end,type FROM requestquery WHERE state=1 AND start LIKE ? `).all(`${year}-${month.toString().padStart(2,'0')}%`) as requestquery[]|[]); 
+        return query;
+    }
+
+    checkRemainAnnual(user:string,year:digit,adds:number,first_half:boolean):boolean{
+        const quotaData = this.calculateAnnualQuota(user,year);
+        const used = (this.login_db.prepare(`SELECT annual FROM dayoffinfo WHERE id= ? AND year= ?`).get(user,year) as dayoffinfo)["annual"] as number;
+        if(quotaData.separate){
+            const q = first_half?0:24
+            if(used+adds<=q){
+                return true;
+            }
+        }else{
+            const quota = quotaData.data[0]["quota"];
+            if(used+adds<=quota){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 
+     * @param {string} year 
+     * @param {string} month 
+     */
+    async clockinRecord(year:digit,month:digit):Promise<[] | clockinrecord[]>{
+        const query = (this.login_db.prepare(`SELECT * FROM clockinrecord WHERE date LIKE ?;`).all(`${year}-${month}-%`) as clockinrecord[]|[]); 
+        return new Promise(res=>{res(query)});
+    }
+
+    syncTickets(user:string,year:digit):void{
+        const tickets = (this.login_db.prepare(`SELECT * FROM requestquery WHERE id= ? AND year= ? AND state=1;`).all(user,year) as requestquery[]|[]); 
+        const table = {
+            "特休假":"annual",
+            "事假":"personal",
+            "家庭照顧假":"care",
+            "病假":"sick",
+            "婚假":"wedding",
+            "喪假":"funeral",
+            "分娩假":"birth",
+            "產檢假":"pcheckup",
+            "流產假":"miscarriage",
+            "陪產假":"paternity",
+            "產假":"maternity",
+            "公假":"official",
+            "停班停課":"typhoon",
+            "其他":"other"
+        };
+        const amount = {
+            "annual":0,
+            "personal":0,
+            "care":0,
+            "sick":0,
+            "wedding":0,
+            "funeral":0,
+            "birth":0,
+            "pcheckup":0,
+            "miscarriage":0,
+            "paternity":0,
+            "maternity":0,
+            "official":0,
+            "typhoon":0,
+            "other":0
+        };
+        type atp = {
+            "annual":0,
+            "personal":0,
+            "care":0,
+            "sick":0,
+            "wedding":0,
+            "funeral":0,
+            "birth":0,
+            "pcheckup":0,
+            "miscarriage":0,
+            "paternity":0,
+            "maternity":0,
+            "official":0,
+            "typhoon":0,
+            "other":0
+        };
+        for(let ticket of tickets){
+            amount[(table[(ticket["type"] as keyof dayofftype)] as keyof atp)] += ticket["totalTime"];
+        }
+        this.init(user,year);
+        var amount_array:string[] = [];
+        const values = [];
+        for(let type of Object.keys(amount)){
+            // console.log(type);
+            if(type!="undefined") {
+                amount_array.push(`${type} = ? `);
+                values.push(amount[(type as keyof atp)]);
+            }
+        }
+        values.push(user, year);
+        let queryString = amount_array.join(", ");
+        log.logFormat(`Syncing ${user}'s data with query: ${queryString}`);
+        this.login_db.prepare(`UPDATE dayoffinfo SET ${queryString} WHERE id= ? AND year= ?;`).run(values); 
+        return;
+    }
+
+    modifyTicket(num:string,action:number,type:string,start:string,end:string,totalTime:number,state:digit,reason:string):number|null{
+        const ticket = (this.login_db.prepare(`SELECT * FROM requestquery WHERE serialnum= ?;`).get(num) as requestquery); 
+        const user = ticket["id"];
+        const query = (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ?;`).get(user) as userinfo); 
+        // const userinfo = this.login_db.prepare(`SELECT * FROM userinfo WHERE id='${query["id"]}'`).all()[0];
+        const checkpoint = new Date(`${end.split("-")[0]}-${query["joinTime"].substring(5)}`);
+        const endDate = new Date(end.split(" ")[0]);
+        const year = checkpoint>endDate?(parseInt(end.split("-")[0])-1).toString():end.split("-")[0];
+        if(action==0){
+            // Delete
+            this.login_db.prepare(`DELETE FROM requestquery WHERE serialnum= ?;`).run(num); 
+            log.logFormat(`Ticket #${num} has been DELETED.`);
+            this.syncTickets(user,ticket["year"]);
+            return 0;
+        }
+        const {m,d} = calculate(new Date(start),new Date(end));
+        if(this.checkRemainAnnual(user,parseInt(year),parseInt(`${totalTime}`),m<6)==false){
+            log.logFormat(`${user} try to request a dayoff but exceed annual quota.`);
+            return null;
+        }
+        const new_reason:string = reason.replace("<","").replace(">","").replace('"','');
+        this.login_db.prepare(`UPDATE requestquery SET type= ?, start= ?, end= ?, totalTime= ?, state= ?, year= ?, reason= ? WHERE serialnum= ?;`).run(type,start,end,totalTime,state,year,new_reason,num); 
+        // log.logFormat(`Ticket #${num} from ${user} has been MODIFIED: type='${type}', start='${start}', end='${end}', totalTime=${totalTime}, state=${state}, year='${year}'`);
+        this.syncTickets(user,ticket["year"]);
+        return 0;
+    }
+
+    modifyEmployeeStatus(user:string,status:digit):void{
+        this.login_db.prepare(`UPDATE userinfo SET status= ? WHERE id= ?;`).run(status,user);
+        return;
+    }
+
+}
+
+function calculate(startDate:Date,endDate:Date):{m:number,d:number} {
+    if (!(startDate instanceof Date) || isNaN(startDate.getTime())) {
+        throw new Error("Invalid date. Please provide a valid startDate as a Date object.");
+    }
+
+    // const endDate = new Date();
+
+    let months = (endDate.getFullYear() - startDate.getFullYear()) * 12;
+    months += endDate.getMonth() - startDate.getMonth();
+    let days = endDate.getDate() - startDate.getDate();
+
+    if (days < 0) {
+        months -= 1;
+        const previousMonth = new Date(endDate.getFullYear(), endDate.getMonth(), 0); // Last day of previous month
+        days += previousMonth.getDate(); // Add days from previous month
+    }
+
+    return { "m":months,"d":days };
+}

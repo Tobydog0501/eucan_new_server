@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>祐肯請假系統</title>
+        
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+		<meta content="utf-8" http-equiv="encoding">
+		<link rel="icon" type="image/x-icon" href="../../img/logo.ico">
+		
+		<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-wEmeIV1mKuiNpC+IOBjI7aAzPcEZeedi5yW5f2yOq55WWLwNGmvvx4Um1vskeMj0" crossorigin="anonymous">
+		<link rel="stylesheet" href="../css/calendar.css">
+	</head>
+    <body>
+		
+		<div id="navbar-container"></div>
+
+		<section>
+			<div class="container">
+                <div class="row">
+                    <div class="col">
+                        <h1>行事曆</h1>
+                    </div>
+                </div>
+            </div>
+		</section>
+
+		<section>
+			<div class="container">
+				<div class="row">
+					<div class="col">
+						<select id="year">
+							<option>2025年</option>
+							<option>2026年</option>
+						</select>
+						<select id="month">
+							<option>1月</option>
+							<option>2月</option>
+							<option>3月</option>
+							<option>4月</option>
+							<option>5月</option>
+							<option>6月</option>
+							<option>7月</option>
+							<option>8月</option>
+							<option>9月</option>
+							<option>10月</option>
+							<option>11月</option>
+							<option>12月</option>
+						</select>
+						<div id="calendar">
+							<iframe src="https://docs.google.com/spreadsheets/d/1xrzMI2jtxNfv5X4ZuoYzT0D_bX6ZQY1l/preview"
+        						width="100%"
+        						height="600px"
+        						frameborder="0">
+							</iframe>
+						</div>
+					</div>
+				</div>
+			</div>
+		</section>
+
+
+		<script src="../js/jquery-3.7.1.min.js"></script>
+        <script src="../js/cookieOperation.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.1/dist/js/bootstrap.bundle.min.js" integrity="sha384-/bQdsTh/da6pkI1MST/rWKFNjaCP5gBSY4sEBT38Q/9RBh9AH40zEOg7Hlq2THRZ" crossorigin="anonymous"></script>
+		<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.10.1/dist/umd/popper.min.js" integrity="sha384-W8fXfP3gkOKtndU4JGtKDvXbO53Wy8SZCQHczT5FMiiqmQfUpWbYdTil/SxwZgAN" crossorigin="anonymous"></script>
+		<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.1/dist/js/bootstrap.min.js" integrity="sha384-skAcpIdS7UcVUC05LJ9Dxay8AXcDYfBJqt1CJ85S/CFujBsIzCIv+l9liuYLaMQ/" crossorigin="anonymous"></script>
+		<script src="../js/employeeCalendar.js"></script>
+	</body>
+</html>

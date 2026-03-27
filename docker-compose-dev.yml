@@ -1,0 +1,48 @@
+services:
+  nginx:
+    container_name: web
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+      - "3000:3000"
+      - "8000:8000"
+      - "443:443/udp"
+    volumes:
+      - ./nginx/conf-dev.d:/etc/nginx/conf.d
+      - ./nginx/var/www/html:/var/www/html
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/logs/access.log:/var/log/nginx/access.log
+      - ./nginx/html:/usr/share/nginx/html
+      - ./nginx/certs:/etc/nginx/certs
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd
+    restart: always
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - "./frontend/logs:/var/log/nginx"
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - "./backend/databases:/app/databases/"
+      - "./backend/proofs:/app/proofs/"
+      - "./backend/logs:/app/logs"
+      - "./backend/api:/app/api"
+      - "./backend/calendars:/app/calendars"
+      - "./backend/clock:/app/clock"
