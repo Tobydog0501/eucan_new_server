@@ -30,7 +30,7 @@ $(() => {
  */
 function fetchQuota(userId, sessionKey, year, month) {
     $.ajax({
-        url: "http://eucan.ddns.net:3000/quota",
+        url: "https://eucan.ddns.net:3000/quota",
         type: "POST",
         dataType: "json",
         headers: { "Content-Type": "application/json" },
@@ -48,7 +48,7 @@ function fetchQuota(userId, sessionKey, year, month) {
  */
 function fetchDayOff(userId, sessionKey, year) {
     $.ajax({
-        url: "http://eucan.ddns.net:3000/dayoff",
+        url: "https://eucan.ddns.net:3000/dayoff",
         type: "POST",
         dataType: "json",
         headers: { "Content-Type": "application/json" },
@@ -104,7 +104,7 @@ function submitLeaveRequest() {
     console.log("🚀 發送請假申請:", requestData);
 
     $.ajax({
-        url: "http://eucan.ddns.net:3000/request",
+        url: "https://eucan.ddns.net:3000/request",
         type: "POST",
         dataType: "text", // 設為 text，讓我們可以手動解析 JSON
         headers: { "Content-Type": "application/json" },

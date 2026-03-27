@@ -25,7 +25,7 @@ $(function () {
     function getData(year) {
         console.log("查詢年份:", year);
         $.ajax({
-            url: "http://eucan.ddns.net:3000/empquery",
+            url: "https://eucan.ddns.net:3000/empquery",
             type: "POST",
             dataType: "json",
             headers: { "Content-Type": "application/json" },

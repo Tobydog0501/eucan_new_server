@@ -10,7 +10,7 @@ $(function () {
     loginCheck(userId, sessionKey);
 
     $.ajax({
-        url: `http://eucan.ddns.net:3000/users`,
+        url: `https://eucan.ddns.net:3000/users`,
         type: 'POST',
         dataType: 'json',
         headers: {
@@ -108,7 +108,7 @@ $(function () {
         // 刪除用戶
         function deleteUser(id) {
             $.ajax({
-                url: `http://eucan.ddns.net:3000/delete`,
+                url: `https://eucan.ddns.net:3000/delete`,
                 type: 'POST',
                 dataType: 'json',
                 headers: {

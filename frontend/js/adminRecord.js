@@ -16,7 +16,7 @@ $(function () {
 
     $("#upData").on("click" , () =>{
         $.ajax({
-            url: "http://eucan.ddns.net:3000/clrecord",
+            url: "https://eucan.ddns.net:3000/clrecord",
             type: "POST",
             dataType: "text", // 設為 text，讓我們可以手動解析 JSON
             headers: { "Content-Type": "application/json" },

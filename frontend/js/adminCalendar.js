@@ -62,7 +62,7 @@ $(function () {
     function upCalendar(month, year) {
         console.log(`正在更新 ${year} 年 ${month} 月的行事曆資料...`);
         $.ajax({
-            url: "http://eucan.ddns.net:3000/calendar",
+            url: "https://eucan.ddns.net:3000/calendar",
             type: "POST",
             dataType: "text", // 設為 text，讓我們可以手動解析 JSON
             headers: { "Content-Type": "application/json" },

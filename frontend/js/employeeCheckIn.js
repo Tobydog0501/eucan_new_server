@@ -25,7 +25,7 @@ $(function() {
 
     // 請求打卡紀錄
     $.ajax({
-        url: "http://eucan.ddns.net:3000/clockin",
+        url: "https://eucan.ddns.net:3000/clockin",
         type: "POST",
         dataType: "json",
         headers: { "Content-Type": "application/json" },
@@ -61,7 +61,7 @@ $(function() {
         btn.prop("disabled", true);
 
         $.ajax({
-            url: "http://eucan.ddns.net:3000/clockin",
+            url: "https://eucan.ddns.net:3000/clockin",
             type: "POST",
             dataType: "json",
             headers: { "Content-Type": "application/json" },

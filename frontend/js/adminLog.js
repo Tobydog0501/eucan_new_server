@@ -17,7 +17,7 @@ $(function () {
 
     function loadData() {
         $.ajax({
-            url: "http://eucan.ddns.net:3000/approved",
+            url: "https://eucan.ddns.net:3000/approved",
             type: "POST",
             dataType: "json",
             contentType: "application/json",
@@ -76,7 +76,7 @@ $(function () {
         const reason = $(this).data("reason");
 
         $.ajax({
-            url: "http://eucan.ddns.net:3000/tmodify",
+            url: "https://eucan.ddns.net:3000/tmodify",
             type: "POST",
             dataType: "json",
             contentType: "application/json",
@@ -123,7 +123,7 @@ $(function () {
         const newreason = $("#reason").val().trim() || $(this).data("reason");
 
         $.ajax({
-            url: "http://eucan.ddns.net:3000/tmodify",
+            url: "https://eucan.ddns.net:3000/tmodify",
             type: "POST",
             dataType: "json",
             contentType: "application/json",

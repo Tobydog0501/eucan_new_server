@@ -43,7 +43,7 @@ function deleteCookie(key){
 function loginCheck(userId,sessionKey){
     var ret;
     $.ajax({
-        url: 'http://eucan.ddns.net:3000/session',
+        url: 'https://eucan.ddns.net:3000/session',
         type: 'POST',
         dataType: 'json',
         headers: {

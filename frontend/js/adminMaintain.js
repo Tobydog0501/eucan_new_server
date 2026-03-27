@@ -13,7 +13,7 @@ $(function() {
         let reviewOption = $("#review option:selected"); // 獲取review
         let reviewId = reviewOption.attr("id"); // 獲取 review 的 id 屬性值
         $.ajax({
-        url: `http://eucan.ddns.net:3000/register`,
+        url: `https://eucan.ddns.net:3000/register`,
         type: 'POST',
         dataType: 'json',
         headers: {

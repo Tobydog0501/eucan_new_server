@@ -10,7 +10,7 @@ $(function () {
         const userCode = $("#code").val();
         const year = $("#date").val();
         $.ajax({
-            url: `http://eucan.ddns.net:3000/sync`,
+            url: `https://eucan.ddns.net:3000/sync`,
             type: "POST",
             dataType: "json",
             headers: {
@@ -139,7 +139,7 @@ $(function () {
     };
     function quota(userCode, year) {
         return $.ajax({
-            url: `http://eucan.ddns.net:3000/quota`,
+            url: `https://eucan.ddns.net:3000/quota`,
             type: "POST",
             dataType: "json",
             headers: {
@@ -155,7 +155,7 @@ $(function () {
     }
     function dayoff(userCode, year) {
         return $.ajax({
-            url: `http://eucan.ddns.net:3000/dayoff`,
+            url: `https://eucan.ddns.net:3000/dayoff`,
             type: "POST",
             dataType: "json",
             headers: {
