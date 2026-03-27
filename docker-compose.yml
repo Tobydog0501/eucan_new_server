@@ -15,6 +15,7 @@ services:
       - ./nginx/var/www/html:/var/www/html
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./nginx/logs/access.log:/var/log/nginx/access.log
+      - ./nginx/acme:/var/cache/nginx/acme-example
       - ./nginx/html:/usr/share/nginx/html
       - ./nginx/certs:/etc/nginx/certs
       - ./nginx/.htpasswd:/etc/nginx/.htpasswd
