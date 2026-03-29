@@ -17,34 +17,28 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # --> OPTION 1: Test by building your dev Docker images
-      # This ensures nothing is broken with your Docker setup
-      - name: Build Dev Docker Containers
-        run: docker compose -f docker-compose-dev.yml build
+        # 1. Build AND Start the containers in the background
+      - name: Build & Start Dev Docker Containers
+        run: docker compose -f docker-compose-dev.yml up -d --build
 
-      # --> OPTION 2: Test your Node.js code locally
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "18" # Adjust to the Node version you are actually using
+        # 2. Give the containers a few seconds to fully boot up
+      - name: Wait for services to initialize
+        run: sleep 10
 
-      - name: Install & Test Backend
-        working-directory: ./backend
+        # 3. Test Frontend Connectivity (Replace 3000 with your actual frontend port)
+      - name: Test Frontend Container
         run: |
-          npm ci || npm install
-          npm test --if-present
+          # --fail makes curl exit with an error if the HTTP status is 400 or 500
+          curl --fail http://localhost:3000 || exit 1
 
-      - name: Install & Test Frontend
-        working-directory: ./frontend
+        # 4. Test Backend Connectivity (Replace 8080 with your actual backend port)
+      - name: Test Backend Container
         run: |
-          npm ci || npm install
-          npm test --if-present
-          npm run build --if-present
+          curl --fail http://localhost:8080 || exit 1
 
-      # --> OPTION 3: Using your Makefile
-      # If your Makefile has a test command (e.g., `make test`), you can uncomment this:
-      # - name: Run Make Test
-      #   run: make test
+        # 5. Clean up
+      - name: Stop Containers
+        run: docker compose -f docker-compose-dev.yml down
 
   # ==========================================
   # 2. CD: Deploy ONLY if pushed to main
@@ -65,7 +59,7 @@ jobs:
           key: ${{ secrets.SERVER_PRIVATE_KEY }}
           script: |
             # 1. Navigate to the directory where your app lives on your server
-            cd /path/to/your/server/eucan_new_server
+            cd /home/${{ secrets.SERVER_USER }}/Desktop/eucan/
 
             # 2. Pull the latest code from the main branch
             git pull origin main
@@ -73,4 +67,4 @@ jobs:
             # 3. Spin down current production containers, rebuild, and spin back up
             # (Or replace this with `make deploy` if you have that in your Makefile)
             docker compose -f docker-compose.yml down
-            docker compose -f docker-compose.yml up -d --build
+            docker compose -f docker-compose.yml up -d --build --force-recreate
