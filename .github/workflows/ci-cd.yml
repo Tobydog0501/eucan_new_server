@@ -1,0 +1,76 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - "**" # This ensures the workflow triggers on ANY push to ANY branch
+
+jobs:
+  # ==========================================
+  # 1. CI: Test if everything is good
+  # ==========================================
+  ci-test:
+    name: Continuous Integration
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # --> OPTION 1: Test by building your dev Docker images
+      # This ensures nothing is broken with your Docker setup
+      - name: Build Dev Docker Containers
+        run: docker-compose -f docker-compose-dev.yml build
+
+      # --> OPTION 2: Test your Node.js code locally
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18" # Adjust to the Node version you are actually using
+
+      - name: Install & Test Backend
+        working-directory: ./backend
+        run: |
+          npm ci || npm install
+          npm test --if-present
+
+      - name: Install & Test Frontend
+        working-directory: ./frontend
+        run: |
+          npm ci || npm install
+          npm test --if-present
+          npm run build --if-present
+
+      # --> OPTION 3: Using your Makefile
+      # If your Makefile has a test command (e.g., `make test`), you can uncomment this:
+      # - name: Run Make Test
+      #   run: make test
+
+  # ==========================================
+  # 2. CD: Deploy ONLY if pushed to main
+  # ==========================================
+  cd-deploy:
+    name: Continuous Deployment
+    runs-on: ubuntu-latest
+    needs: ci-test # IMPORTANT: Wait for CI job to finish and pass!
+    if: github.ref == 'refs/heads/main' # ONLY run if the push is to the 'main' branch
+
+    steps:
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          # These pull from GitHub Secrets (see Step 3 below)
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_PRIVATE_KEY }}
+          script: |
+            # 1. Navigate to the directory where your app lives on your server
+            cd /path/to/your/server/eucan_new_server
+
+            # 2. Pull the latest code from the main branch
+            git pull origin main
+
+            # 3. Spin down current production containers, rebuild, and spin back up
+            # (Or replace this with `make deploy` if you have that in your Makefile)
+            docker-compose -f docker-compose.yml down
+            docker-compose -f docker-compose.yml up -d --build
