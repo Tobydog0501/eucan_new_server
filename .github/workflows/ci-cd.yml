@@ -20,7 +20,7 @@ jobs:
       # --> OPTION 1: Test by building your dev Docker images
       # This ensures nothing is broken with your Docker setup
       - name: Build Dev Docker Containers
-        run: docker-compose -f docker-compose-dev.yml build
+        run: docker compose -f docker-compose-dev.yml build
 
       # --> OPTION 2: Test your Node.js code locally
       - name: Setup Node.js
@@ -72,5 +72,5 @@ jobs:
 
             # 3. Spin down current production containers, rebuild, and spin back up
             # (Or replace this with `make deploy` if you have that in your Makefile)
-            docker-compose -f docker-compose.yml down
-            docker-compose -f docker-compose.yml up -d --build
+            docker compose -f docker-compose.yml down
+            docker compose -f docker-compose.yml up -d --build
