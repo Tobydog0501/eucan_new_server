@@ -53,7 +53,7 @@ COPY ["package.json", "package-lock.json*", "./"]
 RUN npm install
 
 COPY . .
-RUN find . -type f -exec sed -i 's|https://eucan.ddns.net|http://eucan.ddns.net|g' {} +
+RUN find . -type f -exec sed -i 's|https://eucan.ddns.net|http://localhost|g' {} +
 RUN npx tsc
 EXPOSE 3000
 ENV TZ Asia/Taipei
