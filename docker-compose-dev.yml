@@ -33,13 +33,18 @@ services:
       context: ./frontend
       dockerfile: Dockerfile_dev
     restart: always
+    ports:
+      - "8000:8000"
     volumes:
       - "./frontend/logs:/var/log/nginx"
   backend:
     build:
+      network: host # <--- Add this line to your compose file
       context: ./backend
       dockerfile: Dockerfile_dev
     restart: always
+    ports:
+      - "3000:3000"
     volumes:
       - "./backend/databases:/app/databases/"
       - "./backend/proofs:/app/proofs/"
