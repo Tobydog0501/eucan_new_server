@@ -328,7 +328,7 @@ export class sql {
 
     if (tTime <= q1) {
       // Case 1: Quota sufficient, straightforward insertion
-      tickets.push({ start, end, time: tTime, type: "annual" });
+      tickets.push({ start, end, time: tTime, type: "特休假" });
     } else {
       // Case 2: Out of boundaries (Check Spillover Year + 1)
       const quotaInfoYPlus1 = this.calculateAnnualQuota(user, year + 1);
