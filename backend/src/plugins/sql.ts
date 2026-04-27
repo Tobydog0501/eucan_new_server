@@ -310,7 +310,9 @@ export class sql {
     const query: userinfo = (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ? `).get(user) as userinfo);
     const joinDate = new Date(query["joinTime"]);
     const now = new Date();
-    const year = parseInt(start.split("-")[0]);
+    const checkpoint: Date = new Date(`${end.split("-")[0]}-${query["joinTime"].substring(5)}`);
+    const endDate: Date = new Date(end.split(" ")[0]);
+    const year: string = checkpoint > endDate ? (parseInt(end.split("-")[0]) - 1).toString() : end.split("-")[0];
     const new_reason = reason.replace("<", "").replace(">", "").replace('"', '');
     const tTime = parseFloat(`${totalTime}`);
 
