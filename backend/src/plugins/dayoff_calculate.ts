@@ -303,7 +303,7 @@ export async function getSplitTimestamp(start: string, targetHours: number, allN
       nextDay.setDate(nextDay.getDate() + 1);
     }
     nextDay.setHours(8, 30, 0, 0);
-    t1End = new Date(nextDay);
+    t1End.setHours(17, 30, 0, 0);
     t2Start = new Date(nextDay);
   }
 
