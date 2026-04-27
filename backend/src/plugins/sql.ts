@@ -333,8 +333,8 @@ export class sql {
       tickets.push({ start, end, time: tTime, type: "特休假" });
     } else {
       // Case 2: Out of boundaries (Check Spillover Year + 1)
-      const quotaInfoYPlus1 = this.calculateAnnualQuota(user, year + 1);
-      const usedInYPlus1Obj = this.login_db.prepare(`SELECT annual FROM dayoffinfo WHERE id= ? AND year= ?`).get(user, year + 1) as dayoffinfo;
+      const quotaInfoYPlus1 = this.calculateAnnualQuota(user, parseInt(year) + 1);
+      const usedInYPlus1Obj = this.login_db.prepare(`SELECT annual FROM dayoffinfo WHERE id= ? AND year= ?`).get(user, parseInt(year) + 1) as dayoffinfo;
       const usedInYPlus1 = usedInYPlus1Obj ? (usedInYPlus1Obj["annual"] as number) : 0;
 
       const q2 = quotaInfoY.separate ? 24 : (quotaInfoYPlus1.data[0].quota - usedInYPlus1);
