@@ -306,7 +306,7 @@ export class sql {
    * @param {*} end 
    * @returns 
    */
-  async newRequest(user: string, type: string, start: string, end: string, totalTime: digit, reason: string): Promise<{ mgroup: digit, name: string, num: string } | null> {
+  async newRequest(user: string, type: string, start: string, end: string, totalTime: digit, reason: string): Promise<{ mgroup: digit, name: string, num: string, multiple: boolean } | null> {
     const query: userinfo = (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ? `).get(user) as userinfo);
     const joinDate = new Date(query["joinTime"]);
     const now = new Date();
@@ -363,6 +363,7 @@ export class sql {
 
     // Store into DB
     let lastCount = "";
+    const multiple: boolean = tickets.length > 1;
     for (const t of tickets) {
       const currentYear = new Date().getFullYear();
       const serials: requestquery[] | [] = (this.login_db.prepare(`SELECT serialnum FROM requestquery WHERE serialnum LIKE ? ORDER BY serialnum ASC`).all(`${currentYear}%`) as requestquery[] | []);
@@ -375,7 +376,7 @@ export class sql {
       log.logFormat(`${user} just request a new dayoff. Ticket id: #${count}.`, new Date());
     }
 
-    return { "mgroup": query["mgroup"], "name": query["name"], "num": lastCount };
+    return { "mgroup": query["mgroup"], "name": query["name"], "num": lastCount, "multiple": multiple };
   }
 
   //  newRequest(user: string, type: string, start: string, end: string, totalTime: digit, reason: string): { mgroup: digit, name: string, num: string } | null {

@@ -74,6 +74,7 @@ module.exports = async function utils(sqlPlugin: sql, log: logger, mailer: maile
   if (permission == 0) {
     log.logFormat("此假單無須審核，正在自動通過");
     sqlPlugin.setPermit(ret["num"], 1);
+    if (ret["multiple"]) sqlPlugin.setPermit(`${parseInt(ret["num"]) + 1}`, 1);
     res.send("已成功請假");
   } else {
     var man = ["jeff@eucan.com.tw", "catherine@eucan.com.tw"]
