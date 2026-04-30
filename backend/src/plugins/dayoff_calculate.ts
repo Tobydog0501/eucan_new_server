@@ -11,8 +11,8 @@ import { digit } from '../types/types';
  * @param {number} gregorianYear - 公元年
  * @returns {number} - 民國年
  */
-function convertGregorianToROCYear(gregorianYear:number) {
-    return gregorianYear - 1911;
+function convertGregorianToROCYear(gregorianYear: number) {
+  return gregorianYear - 1911;
 }
 
 /**
@@ -20,29 +20,29 @@ function convertGregorianToROCYear(gregorianYear:number) {
  * @param {number} rocYear - 民國年
  * @returns {Promise<Set>} - 包含 'MM-DD' 格式的非工作日
  */
-async function loadNonWorkingDays(rocYear:digit) :Promise<Set<string>>{
-    const filePath = `./api/office_calendar_${rocYear}.json`;
+async function loadNonWorkingDays(rocYear: digit): Promise<Set<string>> {
+  const filePath = `./api/office_calendar_${rocYear}.json`;
 
-    if (!fs.existsSync(filePath)) {
-        // console.log("Can't find file.");
-        await downloadJSON(rocYear);
+  if (!fs.existsSync(filePath)) {
+    // console.log("Can't find file.");
+    await downloadJSON(rocYear);
+  }
+
+  const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  // console.log(data)
+
+  const nonWorkingDays: Set<string> = new Set();
+  for (const month in data) {
+    const days = data[month];
+    for (const day in days) {
+      if (data[month][day]["status"] == 0) continue;
+      const monthStr = month.padStart(2, '0');
+      const dayStr = day.padStart(2, '0');
+      nonWorkingDays.add(`${monthStr}-${dayStr}`);
     }
+  }
 
-    const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-    // console.log(data)
-
-    const nonWorkingDays:Set<string> = new Set();
-    for (const month in data) {
-        const days = data[month];
-        for (const day in days) {
-            if(data[month][day]["status"]==0) continue;
-            const monthStr = month.padStart(2, '0');
-            const dayStr = day.padStart(2, '0');
-            nonWorkingDays.add(`${monthStr}-${dayStr}`);
-        }
-    }
-
-    return new Promise(res=>{res(nonWorkingDays)});
+  return new Promise(res => { res(nonWorkingDays) });
 }
 
 /**
@@ -51,16 +51,16 @@ async function loadNonWorkingDays(rocYear:digit) :Promise<Set<string>>{
  * @param {Date} endDate 
  * @returns {Set<number>} - 包含所有 ROC 年
  */
-function getROCYearsInRange(startDate:Date, endDate:Date) :Set<number>{
-    const years:Set<number> = new Set();
-    const startYear = startDate.getFullYear();
-    const endYear = endDate.getFullYear();
+export function getROCYearsInRange(startDate: Date, endDate: Date): Set<number> {
+  const years: Set<number> = new Set();
+  const startYear = startDate.getFullYear();
+  const endYear = endDate.getFullYear();
 
-    for (let year = startYear; year <= endYear; year++) {
-        years.add(convertGregorianToROCYear(year));
-    }
+  for (let year = startYear; year <= endYear; year++) {
+    years.add(convertGregorianToROCYear(year));
+  }
 
-    return years;
+  return years;
 }
 
 /**
@@ -69,11 +69,11 @@ function getROCYearsInRange(startDate:Date, endDate:Date) :Set<number>{
  * @param {Set} nonWorkingDaysSet 
  * @returns {boolean}
  */
-async function isNonWorkingDay(date:Date, nonWorkingDaysSet:Set<string>) :Promise<boolean>{
-    const month = (date.getMonth() + 1).toString().padStart(2, '0'); // getMonth() 返回 0-11
-    const day = date.getDate().toString().padStart(2, '0');
-    const dateStr = `${month}-${day}`;
-    return new Promise(res=>{res(nonWorkingDaysSet.has(dateStr))});
+async function isNonWorkingDay(date: Date, nonWorkingDaysSet: Set<string>): Promise<boolean> {
+  const month = (date.getMonth() + 1).toString().padStart(2, '0'); // getMonth() 返回 0-11
+  const day = date.getDate().toString().padStart(2, '0');
+  const dateStr = `${month}-${day}`;
+  return new Promise(res => { res(nonWorkingDaysSet.has(dateStr)) });
 }
 
 /**
@@ -81,8 +81,8 @@ async function isNonWorkingDay(date:Date, nonWorkingDaysSet:Set<string>) :Promis
  * @param {Date} date 
  * @returns {number}
  */
-function getDecimalTime(date:Date):number {
-    return date.getHours() + date.getMinutes() / 60;
+function getDecimalTime(date: Date): number {
+  return date.getHours() + date.getMinutes() / 60;
 }
 
 /**
@@ -93,15 +93,15 @@ function getDecimalTime(date:Date):number {
  * @param {number} intervalEnd - 當天的工作區間結束時間（十進制小時）
  * @returns {number} - 計算出的工作時數
  */
-async function calculateWorkingHoursForPeriod(periodStart:number, periodEnd:number, intervalStart:number, intervalEnd:number):Promise<number> {
-    if (intervalStart <= periodStart && intervalEnd >= periodEnd) {
-        return 4;
-    }
+async function calculateWorkingHoursForPeriod(periodStart: number, periodEnd: number, intervalStart: number, intervalEnd: number): Promise<number> {
+  if (intervalStart <= periodStart && intervalEnd >= periodEnd) {
+    return 4;
+  }
 
-    const overlapStart = Math.max(intervalStart, periodStart);
-    const overlapEnd = Math.min(intervalEnd, periodEnd);
-    const hours = overlapEnd - overlapStart;
-    return new Promise(res=>{res(hours > 0 ? hours : 0)});
+  const overlapStart = Math.max(intervalStart, periodStart);
+  const overlapEnd = Math.min(intervalEnd, periodEnd);
+  const hours = overlapEnd - overlapStart;
+  return new Promise(res => { res(hours > 0 ? hours : 0) });
 }
 
 /**
@@ -110,107 +110,220 @@ async function calculateWorkingHoursForPeriod(periodStart:number, periodEnd:numb
  * @param {string} time2 - 結束時間，格式為 "YYYY-MM-DD HH:MM"
  * @returns {number} - 經過的工作時數
  */
-export async function caculateTime(time1:string, time2:string) :Promise<number>{
-    const date1 = new Date(time1);
-    const date2 = new Date(time2);
+export async function caculateTime(time1: string, time2: string): Promise<number> {
+  const date1 = new Date(time1);
+  const date2 = new Date(time2);
 
-    // if (isNaN(date1) || isNaN(date2)) {
-    //     throw new Error("Invalid date format. Please use 'YYYY-MM-DD HH:MM'.");
-    // }
+  // if (isNaN(date1) || isNaN(date2)) {
+  //     throw new Error("Invalid date format. Please use 'YYYY-MM-DD HH:MM'.");
+  // }
 
-    if (date2 < date1) {
-        throw new Error("time2 必須大於或等於 time1");
+  if (date2 < date1) {
+    throw new Error("time2 必須大於或等於 time1");
+  }
+
+  let totalHours = 0;
+
+  // 定義工作段
+  const morningStart = 8.5;    // 8:30
+  const morningEnd = 12.0;     // 12:00
+  const afternoonStart = 13.5; // 13:30
+  const afternoonEnd = 17.5;   // 17:30
+
+  // 獲取所有涉及的 ROC 年
+  const rocYears = getROCYearsInRange(date1, date2);
+
+  // 載入所有涉及的 ROC 年的非工作日
+
+  const allNonWorkingDays = await fetch_all_nwd(rocYears);
+  // new Set();
+
+  // 初始化當前日期為 date1 的日期部分
+  let currentDate = new Date(date1);
+  currentDate.setHours(0, 0, 0, 0);
+
+  // 迴圈遍歷每一天
+  while (currentDate <= date2) {
+    // 檢查是否為工作日
+    // console.log(allNonWorkingDays)
+    let tp = await isNonWorkingDay(currentDate, allNonWorkingDays);
+    // console.log(tp)
+    if (!tp) {
+      // 定義當天的工作區間
+      let intervalStart = morningStart;
+      let intervalEnd = afternoonEnd;
+
+      if (currentDate.toDateString() === date1.toDateString()) {
+        // 起始日
+        intervalStart = Math.max(getDecimalTime(date1), morningStart);
+      }
+
+      if (currentDate.toDateString() === date2.toDateString()) {
+        // 終止日
+        intervalEnd = Math.min(getDecimalTime(date2), afternoonEnd);
+      }
+
+      // 計算上午工作時數
+      let morningIntervalStart = intervalStart;
+      let morningIntervalEnd = intervalEnd;
+
+      if (currentDate.toDateString() === date1.toDateString()) {
+        morningIntervalStart = Math.max(getDecimalTime(date1), morningStart);
+      }
+
+      if (currentDate.toDateString() === date2.toDateString()) {
+        morningIntervalEnd = Math.min(getDecimalTime(date2), morningEnd);
+      }
+
+      let morningHours = await calculateWorkingHoursForPeriod(morningStart, morningEnd, morningIntervalStart, morningIntervalEnd);
+
+      // 計算下午工作時數
+      let afternoonIntervalStart = intervalStart;
+      let afternoonIntervalEnd = intervalEnd;
+
+      if (currentDate.toDateString() === date1.toDateString()) {
+        afternoonIntervalStart = Math.max(getDecimalTime(date1), afternoonStart);
+      }
+
+      if (currentDate.toDateString() === date2.toDateString()) {
+        afternoonIntervalEnd = Math.min(getDecimalTime(date2), afternoonEnd);
+      }
+
+      let afternoonHours = await calculateWorkingHoursForPeriod(afternoonStart, afternoonEnd, afternoonIntervalStart, afternoonIntervalEnd);
+
+      totalHours += morningHours + afternoonHours;
     }
 
-    let totalHours = 0;
-
-    // 定義工作段
-    const morningStart = 8.5;    // 8:30
-    const morningEnd = 12.0;     // 12:00
-    const afternoonStart = 13.5; // 13:30
-    const afternoonEnd = 17.5;   // 17:30
-
-    // 獲取所有涉及的 ROC 年
-    const rocYears = getROCYearsInRange(date1, date2);
-
-    // 載入所有涉及的 ROC 年的非工作日
-
-    const allNonWorkingDays = await fetch_all_nwd(rocYears);
-    // new Set();
-
-    // 初始化當前日期為 date1 的日期部分
-    let currentDate = new Date(date1);
-    currentDate.setHours(0, 0, 0, 0);
-
-    // 迴圈遍歷每一天
-    while (currentDate <= date2) {
-        // 檢查是否為工作日
-        // console.log(allNonWorkingDays)
-        let tp = await isNonWorkingDay(currentDate, allNonWorkingDays);
-        // console.log(tp)
-        if (!tp) {
-            // 定義當天的工作區間
-            let intervalStart = morningStart;
-            let intervalEnd = afternoonEnd;
-
-            if (currentDate.toDateString() === date1.toDateString()) {
-                // 起始日
-                intervalStart = Math.max(getDecimalTime(date1), morningStart);
-            }
-
-            if (currentDate.toDateString() === date2.toDateString()) {
-                // 終止日
-                intervalEnd = Math.min(getDecimalTime(date2), afternoonEnd);
-            }
-
-            // 計算上午工作時數
-            let morningIntervalStart = intervalStart;
-            let morningIntervalEnd = intervalEnd;
-
-            if (currentDate.toDateString() === date1.toDateString()) {
-                morningIntervalStart = Math.max(getDecimalTime(date1), morningStart);
-            }
-
-            if (currentDate.toDateString() === date2.toDateString()) {
-                morningIntervalEnd = Math.min(getDecimalTime(date2), morningEnd);
-            }
-
-            let morningHours = await calculateWorkingHoursForPeriod(morningStart, morningEnd, morningIntervalStart, morningIntervalEnd);
-
-            // 計算下午工作時數
-            let afternoonIntervalStart = intervalStart;
-            let afternoonIntervalEnd = intervalEnd;
-
-            if (currentDate.toDateString() === date1.toDateString()) {
-                afternoonIntervalStart = Math.max(getDecimalTime(date1), afternoonStart);
-            }
-
-            if (currentDate.toDateString() === date2.toDateString()) {
-                afternoonIntervalEnd = Math.min(getDecimalTime(date2), afternoonEnd);
-            }
-
-            let afternoonHours = await calculateWorkingHoursForPeriod(afternoonStart, afternoonEnd, afternoonIntervalStart, afternoonIntervalEnd);
-
-            totalHours += morningHours + afternoonHours;
-        }
-
-        // 移動到下一天
-        currentDate.setDate(currentDate.getDate() + 1);
-    }
-    // console.log(totalHours)
-    return new Promise(res=>{res(totalHours)});
+    // 移動到下一天
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+  // console.log(totalHours)
+  return new Promise(res => { res(totalHours) });
 }
 
-async function fetch_all_nwd(rocYears:Set<number>):Promise<Set<string>> {
-    const allNonWorkingDays:Set<string> = new Set();
-    for(let rocYear of rocYears){
-        const nonWorkingDays = await loadNonWorkingDays(rocYear);
-        for(let day of nonWorkingDays){
-            allNonWorkingDays.add(day);
-        }
+export async function getSplitTimestamp(start: string, targetHours: number, allNonWorkingDays: Set<string>): Promise<{ calc1: string, calc2: string }> {
+  let current = new Date(start);
+  let remaining = targetHours;
+
+  while (remaining > 0) {
+    let isNWD = await isNonWorkingDay(current, allNonWorkingDays);
+    if (isNWD) {
+      current.setDate(current.getDate() + 1);
+      current.setHours(8, 30, 0, 0);
+      continue;
     }
-    return new Promise(res=>{
-        res(allNonWorkingDays);
-    })
+
+    let curDec = current.getHours() + current.getMinutes() / 60;
+
+    // Start before work hours
+    if (curDec < 8.5) {
+      curDec = 8.5;
+      current.setHours(8, 30, 0, 0);
+    }
+
+    // Morning block calculation (Applying the exact "8.5 to 12.0 = 4 hours" rule)
+    if (curDec < 12.0 && remaining > 0) {
+      if (curDec <= 8.5) {
+        if (remaining >= 4) {
+          remaining -= 4;
+          curDec = 12.0;
+          current.setHours(12, 0, 0, 0);
+        } else {
+          curDec = 8.5 + remaining;
+          remaining = 0;
+          current.setHours(Math.floor(curDec), Math.round((curDec % 1) * 60), 0, 0);
+        }
+      } else {
+        let available = 12.0 - curDec;
+        if (remaining >= available) {
+          remaining -= available;
+          curDec = 12.0;
+          current.setHours(12, 0, 0, 0);
+        } else {
+          curDec += remaining;
+          remaining = 0;
+          current.setHours(Math.floor(curDec), Math.round((curDec % 1) * 60), 0, 0);
+        }
+      }
+    }
+
+    // Lunch break jump
+    if (curDec >= 12.0 && curDec < 13.5 && remaining > 0) {
+      curDec = 13.5;
+      current.setHours(13, 30, 0, 0);
+    }
+
+    // Afternoon block calculation
+    if (curDec < 17.5 && remaining > 0) {
+      if (curDec <= 13.5) {
+        if (remaining >= 4) {
+          remaining -= 4;
+          curDec = 17.5;
+          current.setHours(17, 30, 0, 0);
+        } else {
+          curDec = 13.5 + remaining;
+          remaining = 0;
+          current.setHours(Math.floor(curDec), Math.round((curDec % 1) * 60), 0, 0);
+        }
+      } else {
+        let available = 17.5 - curDec;
+        if (remaining >= available) {
+          remaining -= available;
+          curDec = 17.5;
+          current.setHours(17, 30, 0, 0);
+        } else {
+          curDec += remaining;
+          remaining = 0;
+          current.setHours(Math.floor(curDec), Math.round((curDec % 1) * 60), 0, 0);
+        }
+      }
+    }
+
+    // Move to the next working day
+    if (curDec >= 17.5 && remaining > 0) {
+      current.setDate(current.getDate() + 1);
+      current.setHours(8, 30, 0, 0);
+    }
+  }
+
+  let t1End = new Date(current);
+  let t2Start = new Date(current);
+  let splitDec = current.getHours() + current.getMinutes() / 60;
+
+  // Crossing over rules to dodge forbidden time segments
+  if (splitDec === 12.0) {
+    // Logical split hits lunch: Ticket 1 ends AFTER break, Ticket 2 starts BEFORE break
+    t1End.setHours(13, 30, 0, 0);
+    t2Start.setHours(12, 0, 0, 0);
+  } else if (splitDec === 17.5) {
+    // Logical split hits the very end of day: Bump both tickets to 08:30 next working day
+    let nextDay = new Date(current);
+    nextDay.setDate(nextDay.getDate() + 1);
+    while (await isNonWorkingDay(nextDay, allNonWorkingDays)) {
+      nextDay.setDate(nextDay.getDate() + 1);
+    }
+    nextDay.setHours(8, 30, 0, 0);
+    t1End.setHours(17, 30, 0, 0);
+    t2Start = new Date(nextDay);
+  }
+
+  const formatStr = (d: Date) => {
+    return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+  };
+
+  return { calc1: formatStr(t1End), calc2: formatStr(t2Start) };
+}
+
+export async function fetch_all_nwd(rocYears: Set<number>): Promise<Set<string>> {
+  const allNonWorkingDays: Set<string> = new Set();
+  for (let rocYear of rocYears) {
+    const nonWorkingDays = await loadNonWorkingDays(rocYear);
+    for (let day of nonWorkingDays) {
+      allNonWorkingDays.add(day);
+    }
+  }
+  return new Promise(res => {
+    res(allNonWorkingDays);
+  })
 }
 
