@@ -128,7 +128,10 @@ header img {
 	font-size: 0.95rem;
 	line-height: 1.45;
 	color: #0f172a;
-	word-break: break-word;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	word-break: normal;
 }
 
 .calendar-no-event,
