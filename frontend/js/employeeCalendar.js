@@ -44,36 +44,34 @@ $(function () {
             return;
         }
         $('.calendar-title').text(`${data.year}年 ${monthNames[data.month - 1]} 行事曆`);
-        let html = '<div class="calendar-header-row">';
+        // Build simple table-like calendar (minimal styles) resembling spreadsheet
+        let html = '<table class="calendar-table"><thead><tr>';
         for (let label of weekLabels) {
-            html += `<div class="calendar-weekday">${label}</div>`;
+            html += `<th>${label}</th>`;
         }
-        html += '</div><div class="calendar-grid">';
+        html += '</tr></thead><tbody>';
 
         for (let w of data.weeks) {
+            html += '<tr>';
             for (let c of w) {
                 if (c == null) {
-                    html += '<div class="calendar-day calendar-day-empty"></div>';
+                    html += '<td></td>';
                     continue;
                 }
-
                 const reminders = Array.isArray(c.reminders) ? c.reminders : [];
-                const reminderHtml = reminders.length
-                    ? `<div class="calendar-events">${reminders.map((r) => `<div class="calendar-event">${escapeHtml(r)}</div>`).join('')}</div>`
-                    : '<div class="calendar-no-event">無請假資料</div>';
-
-                html += `
-                    <div class="calendar-day">
-                        <div class="calendar-day-top">
-                            <div class="calendar-day-number">${c.day}</div>
-                        </div>
-                        ${reminderHtml}
-                    </div>
-                `;
+                if (reminders.length === 0) {
+                    // No leave: render empty cell (no text)
+                    html += '<td></td>';
+                } else {
+                    // Render Day label and each reminder on its own line
+                    const eventsHtml = reminders.map(r => `<div class="cal-line">${escapeHtml(r)}</div>`).join('');
+                    html += `<td><div class="cal-day-label">Day ${c.day}</div>${eventsHtml}</td>`;
+                }
             }
+            html += '</tr>';
         }
 
-        html += '</div>';
+        html += '</tbody></table>';
         $('#calendarGrid').html(html);
     }
 

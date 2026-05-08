@@ -145,6 +145,47 @@ header img {
 	line-height: 1.5;
 }
 
+/* spreadsheet-like table style */
+.calendar-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+.calendar-table th,
+.calendar-table td {
+	border: 1px solid #111;
+	padding: 8px 10px;
+	vertical-align: top;
+	min-width: 140px;
+	height: 120px;
+	font-size: 0.9rem;
+	color: #111;
+}
+.calendar-table thead th {
+	background: #fff;
+	font-weight: 700;
+	text-align: center;
+}
+.cal-day-label {
+	font-weight: 700;
+	margin-bottom: 6px;
+}
+.cal-line {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	margin-bottom: 4px;
+}
+
+/* remove rounding and shadows from previous card style for table view */
+.calendar-shell .calendar-header-row,
+.calendar-shell .calendar-grid,
+.calendar-day,
+.calendar-weekday {
+	border-radius: 0;
+	box-shadow: none;
+}
+
 @media (max-width: 1200px) {
 
 	.calendar-header-row,
