@@ -11,6 +11,17 @@ $(function () {
     $("#navbar-container").load("../employee/navbar.html");
 
     const apiBase = `${window.location.protocol}//${window.location.hostname}:3000`;
+    const weekLabels = ["日", "一", "二", "三", "四", "五", "六"];
+    const monthNames = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+
+    function escapeHtml(text) {
+        return String(text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
 
     async function fetchCalendar(year, month) {
         const url = `${apiBase}/api/calendar/view?account=${encodeURIComponent(userId)}&cookie=${encodeURIComponent(sessionKey)}&year=${year}&month=${month}`;
@@ -29,39 +40,47 @@ $(function () {
 
     function renderCalendar(data) {
         if (!data || !data.weeks) {
-            $('#calendarGrid').html('<p>無法取得行事曆資料。</p>');
+            $('#calendarGrid').html('<div class="calendar-empty">無法取得行事曆資料。</div>');
             return;
         }
-        let html = '<table class="table table-bordered"><thead><tr>';
-        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        for (let d of days) html += `<th>${d}</th>`;
-        html += '</tr></thead><tbody>';
+        $('.calendar-title').text(`${data.year}年 ${monthNames[data.month - 1]} 行事曆`);
+        let html = '<div class="calendar-header-row">';
+        for (let label of weekLabels) {
+            html += `<div class="calendar-weekday">${label}</div>`;
+        }
+        html += '</div><div class="calendar-grid">';
+
         for (let w of data.weeks) {
-            html += '<tr>';
             for (let c of w) {
                 if (c == null) {
-                    html += '<td></td>';
-                } else {
-                    let cell = `<div><strong>${c.day}</strong>`;
-                    if (c.reminders && c.reminders.length > 0) {
-                        cell += '<ul>';
-                        for (let r of c.reminders) cell += `<li>${r}</li>`;
-                        cell += '</ul>';
-                    }
-                    cell += '</div>';
-                    html += `<td style="vertical-align:top">${cell}</td>`;
+                    html += '<div class="calendar-day calendar-day-empty"></div>';
+                    continue;
                 }
+
+                const reminders = Array.isArray(c.reminders) ? c.reminders : [];
+                const reminderHtml = reminders.length
+                    ? `<div class="calendar-events">${reminders.map((r) => `<div class="calendar-event">${escapeHtml(r)}</div>`).join('')}</div>`
+                    : '<div class="calendar-no-event">無請假資料</div>';
+
+                html += `
+                    <div class="calendar-day">
+                        <div class="calendar-day-top">
+                            <div class="calendar-day-number">${c.day}</div>
+                        </div>
+                        ${reminderHtml}
+                    </div>
+                `;
             }
-            html += '</tr>';
         }
-        html += '</tbody></table>';
+
+        html += '</div>';
         $('#calendarGrid').html(html);
     }
 
     async function updateCalendar() {
         const monthIndex = parseInt($("#month").val());
         const yearIndex = parseInt($("#year").val());
-        $('#calendarGrid').html('<p>載入中...</p>');
+        $('#calendarGrid').html('<div class="calendar-empty">載入中...</div>');
         const data = await fetchCalendar(yearIndex, monthIndex);
         renderCalendar(data);
     }
@@ -76,12 +95,4 @@ $(function () {
     // 監聽 `#month` / `#year` 變更事件
     $("#month").change(updateCalendar);
     $("#year").change(updateCalendar);
-
-    // 匯出按鈕
-    $(document).on('click', '#exportBtn', function () {
-        const monthIndex = parseInt($("#month").val());
-        const yearIndex = parseInt($("#year").val());
-        const url = `${apiBase}/api/calendar/export?account=${encodeURIComponent(userId)}&cookie=${encodeURIComponent(sessionKey)}&year=${yearIndex}&month=${monthIndex}`;
-        window.open(url, '_blank');
-    });
 });
