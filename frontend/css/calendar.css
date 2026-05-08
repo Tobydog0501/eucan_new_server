@@ -67,7 +67,8 @@ header img {
 
 /* Page title (top H1) on calendar page */
 .page-title {
-	font-size: 0.9rem; /* roughly half of typical h1 */
+	font-size: 0.9rem;
+	/* roughly half of typical h1 */
 	font-weight: 700;
 	margin: 0 0 0.5rem 0;
 }
