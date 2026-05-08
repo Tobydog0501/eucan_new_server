@@ -43,7 +43,6 @@ $(function () {
             $('#calendarGrid').html('<div class="calendar-empty">無法取得行事曆資料。</div>');
             return;
         }
-        $('.calendar-title').text(`${data.year}年 ${monthNames[data.month - 1]} 行事曆`);
         // Build simple table-like calendar (minimal styles) resembling spreadsheet
         let html = '<table class="calendar-table"><thead><tr>';
         for (let label of weekLabels) {
