@@ -327,38 +327,41 @@ export class sql {
     const q1 = quotaInfoY.separate ? (m < 6 ? 0 : 24 - usedInY) : (quotaInfoY.data[0].quota - usedInY);
 
     let tickets: { start: string, end: string, time: number, type: string }[] = [];
-
-    if (tTime <= q1) {
-      // Case 1: Quota sufficient, straightforward insertion
-      tickets.push({ start, end, time: tTime, type: "特休假" });
-    } else {
-      // Case 2: Out of boundaries (Check Spillover Year + 1)
-      const quotaInfoYPlus1 = this.calculateAnnualQuota(user, parseInt(year) + 1);
-      const usedInYPlus1Obj = this.login_db.prepare(`SELECT annual FROM dayoffinfo WHERE id= ? AND year= ?`).get(user, parseInt(year) + 1) as dayoffinfo;
-      const usedInYPlus1 = usedInYPlus1Obj ? (usedInYPlus1Obj["annual"] as number) : 0;
-
-      const q2 = quotaInfoY.separate ? 24 : (quotaInfoYPlus1.data[0].quota - usedInYPlus1);
-
-      if (q2 < (tTime - q1)) {
-        log.logFormat(`${user} try to request a dayoff but exceed total quota.`);
-        return null;
-      }
-
-      if (q1 > 0) {
-        // Determine exact valid breakpoints skipping non-working days
-        const startD = new Date(start);
-        const rocYears = getROCYearsInRange(startD, startD);
-        const allNonWorkingDays = await fetch_all_nwd(rocYears);
-
-        // Fetch split logic that strictly complies with shift time requirements
-        const splits = await getSplitTimestamp(start, q1, allNonWorkingDays);
-
-        tickets.push({ start: start, end: splits.calc1, time: q1, type: "特休假" });
-        tickets.push({ start: splits.calc2, end: end, time: tTime - q1, type: "特休假_N" });
+    if (type === "特休假") {
+      if (tTime <= q1) {
+        // Case 1: Quota sufficient, straightforward insertion
+        tickets.push({ start, end, time: tTime, type: "特休假" });
       } else {
-        // If q1 is flat 0, ONLY create 1 special ticket per requirement
-        tickets.push({ start: start, end: end, time: tTime, type: "特休假_N" });
+        // Case 2: Out of boundaries (Check Spillover Year + 1)
+        const quotaInfoYPlus1 = this.calculateAnnualQuota(user, parseInt(year) + 1);
+        const usedInYPlus1Obj = this.login_db.prepare(`SELECT annual FROM dayoffinfo WHERE id= ? AND year= ?`).get(user, parseInt(year) + 1) as dayoffinfo;
+        const usedInYPlus1 = usedInYPlus1Obj ? (usedInYPlus1Obj["annual"] as number) : 0;
+
+        const q2 = quotaInfoY.separate ? 24 : (quotaInfoYPlus1.data[0].quota - usedInYPlus1);
+
+        if (q2 < (tTime - q1)) {
+          log.logFormat(`${user} try to request a dayoff but exceed total quota.`);
+          return null;
+        }
+
+        if (q1 > 0) {
+          // Determine exact valid breakpoints skipping non-working days
+          const startD = new Date(start);
+          const rocYears = getROCYearsInRange(startD, startD);
+          const allNonWorkingDays = await fetch_all_nwd(rocYears);
+
+          // Fetch split logic that strictly complies with shift time requirements
+          const splits = await getSplitTimestamp(start, q1, allNonWorkingDays);
+
+          tickets.push({ start: start, end: splits.calc1, time: q1, type: "特休假" });
+          tickets.push({ start: splits.calc2, end: end, time: tTime - q1, type: "特休假_N" });
+        } else {
+          // If q1 is flat 0, ONLY create 1 special ticket per requirement
+          tickets.push({ start: start, end: end, time: tTime, type: "特休假_N" });
+        }
       }
+    } else {
+      tickets.push({ start, end, time: tTime, type: type });
     }
 
     // Store into DB
