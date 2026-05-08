@@ -58,14 +58,10 @@ $(function () {
                     continue;
                 }
                 const reminders = Array.isArray(c.reminders) ? c.reminders : [];
-                if (reminders.length === 0) {
-                    // No leave: render empty cell (no text)
-                    html += '<td></td>';
-                } else {
-                    // Render Day label and each reminder on its own line
-                    const eventsHtml = reminders.map(r => `<div class="cal-line">${escapeHtml(r)}</div>`).join('');
-                    html += `<td><div class="cal-day-label">Day ${c.day}</div>${eventsHtml}</td>`;
-                }
+                const eventsHtml = reminders.length
+                    ? reminders.map(r => `<div class="cal-line">${escapeHtml(r)}</div>`).join('')
+                    : '';
+                html += `<td><div class="cal-day-label">Day ${c.day}</div>${eventsHtml}</td>`;
             }
             html += '</tr>';
         }
