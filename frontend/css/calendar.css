@@ -72,10 +72,10 @@ header img {
 
 /* Page title (top H1) on calendar page */
 .page-title {
-	font-size: 1.25rem;
+	font-size: 0.9rem;
 	/* roughly half of typical h1 */
 	font-weight: 700;
-	margin: 0 0 0.5rem 0;
+	margin: 0.5rem 0 0.5rem 0;
 }
 
 .calendar-header-row,
@@ -182,7 +182,6 @@ header img {
 .calendar-table th,
 .calendar-table td {
 	border: 1px solid #111;
-	padding: 8px 10px;
 	vertical-align: top;
 	width: 14.285%;
 	min-width: 140px;
@@ -196,6 +195,10 @@ header img {
 	background: #fff;
 	font-weight: 700;
 	text-align: center;
+	/* reduce header row height */
+	padding: 6px 8px;
+	height: 36px;
+	vertical-align: middle;
 }
 
 .cal-day-label {
