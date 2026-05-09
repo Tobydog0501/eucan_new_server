@@ -42,7 +42,7 @@ header img {
 }
 
 .calendar-shell {
-	background: linear-gradient(180deg, #f2f8ff 0%, #eaf3ff 100%);
+	background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%);
 	border: 1px solid #e6ebf2;
 	border-radius: 20px;
 	box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
