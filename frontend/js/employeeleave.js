@@ -18,6 +18,13 @@ $(() => {
     // 取得當年度已休時數
     fetchDayOff(userId, sessionKey, year);
 
+    // 切換年度查詢特休假資訊
+    $("#search").on("click", () => {
+        const selectedYear = $("#info select").val() === "當年度" ? year : year + 1;
+        fetchQuota(userId, sessionKey, selectedYear);
+        fetchDayOff(userId, sessionKey, selectedYear);
+    });
+
     // 送出請假申請
     $("#submit").on("click", submitLeaveRequest);
 
