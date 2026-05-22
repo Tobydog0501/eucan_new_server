@@ -8,21 +8,18 @@ $(() => {
     if (!sessionKey) {
         alert("請重新登入");
         window.location = window.location.origin;
+        return;
     }
 
     loginCheck(userId, sessionKey);
 
-    // 取得當年度特休假總時數
-    fetchQuota(userId, sessionKey, year);
-
-    // 取得當年度已休時數
-    fetchDayOff(userId, sessionKey, year);
+    // 先載入當年度資訊
+    info(userId, sessionKey, year);
 
     // 切換年度查詢特休假資訊
     $("#search").on("click", () => {
         const selectedYear = $("#info select").val() === "當年度" ? year : year + 1;
-        fetchQuota(userId, sessionKey, selectedYear);
-        fetchDayOff(userId, sessionKey, selectedYear);
+        info(userId, sessionKey, selectedYear);
     });
 
     // 送出請假申請
@@ -32,40 +29,120 @@ $(() => {
     $("#navbar-container").load("../employee/navbar.html");
 });
 
-/**
- * 取得特休假總時數
- */
-function fetchQuota(userId, sessionKey, year, month) {
+function info(userId, sessionKey, selectedYear) {
     $.ajax({
-        url: "https://eucan.ddns.net:3000/quota",
-        type: "POST",
-        dataType: "json",
-        headers: { "Content-Type": "application/json" },
-        data: JSON.stringify({ account: userId, cookie: sessionKey, year: year})
-    }).done(res => {
-        console.log("✅ 取得特休假總時數:", res);
-        $("#quota").text(`當年度特休假總時數: ${res.data[0].quota} (hr)`);
-    }).fail(xhr => {
-        console.error("❌ 取得特休假總時數失敗:", xhr);
-    });
-}
+        url: `https://eucan.ddns.net:3000/sync`,
+        type: 'POST',
+        dataType: 'json',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        data: JSON.stringify({
+            account: userId,
+            cookie: sessionKey,
+            user: userId,
+            year: selectedYear,
 
-/**
- * 取得當年度已休時數
- */
-function fetchDayOff(userId, sessionKey, year) {
-    $.ajax({
-        url: "https://eucan.ddns.net:3000/dayoff",
+        }),
+    }).then(res => {
+        //console.log(res);
+    })
+
+    clean();
+
+    $.when(quota(selectedYear, userId, sessionKey), dayoff(selectedYear, userId, sessionKey))
+        .then(function (quota, dayoff) {
+            console.log(quota[0]);
+            let separate = 0;
+            if (quota[0].separate === true) {
+                $.confirm({
+                    title: '確認',
+                    content: '要查看上半年還是下半年',
+                    buttons: {
+                        confirm: {
+                            text: '上半年',
+                            btnClass: 'btn-blue',
+                            action: function () {
+                                separate = 0;
+                                $.alert('上半年已選擇');
+                                renderData(separate, quota, dayoff);
+                            }
+                        },
+                        cancel: {
+                            text: '下半年',
+                            action: function () {
+                                separate = 1;
+                                $.alert('下半年已選擇');
+                                renderData(separate, quota, dayoff);
+                            }
+                        }
+                    }
+                });
+            } else {
+                separate = 0;
+                renderData(separate, quota, dayoff);
+            }
+
+            function renderData(separate, quota, dayoff) {
+                // Check if data exists and has at least one element
+                const quotaData = quota[0] && quota[0].data && quota[0].data.length > 0 ? quota[0].data[separate] : {};
+                const dayoffData = dayoff[0] && dayoff[0].data && dayoff[0].data.length > 0 ? dayoff[0].data[separate] : {};
+
+                const inf = {
+                    quota: quotaData.quota || 0,
+                    annual: dayoffData.annual || 0,
+                };
+
+                $("#quota").text(`${inf.quota}(hr)`);
+                $("#annual").text(`${inf.annual}(hr)`);
+
+            }
+        })
+        .fail(function (textStatus, errorThrown) {
+            // 失敗
+            alert("請求失敗，請檢查員工編號是否正確或稍後再試！");
+            console.error("Request failed:", textStatus, errorThrown);
+        });
+
+
+}
+function clean() {
+    $("#quota, #annual").empty();
+    $("#joinTime h2").remove();
+};
+
+
+
+
+function quota(year, userId, sessionKey) {
+    return $.ajax({
+        url: `https://eucan.ddns.net:3000/quota`,
         type: "POST",
         dataType: "json",
-        headers: { "Content-Type": "application/json" },
-        data: JSON.stringify({ account: userId, cookie: sessionKey, year: year })
-    }).done(res => {
-        console.log("✅ 取得已休假時數:", res);
-        $("#annual").text(`當年度特休假已休時數: ${res.data[0].annual} (hr)`);
-    }).fail(xhr => {
-        console.error("❌ 取得已休時數失敗:", xhr);
-    });
+        headers: {
+            "Content-Type": "application/json",
+        },
+        data: JSON.stringify({
+            account: userId,
+            cookie: sessionKey,
+            year: year,
+        }),
+    })
+}
+function dayoff(year, userId, sessionKey) {
+    return $.ajax({
+        url: `https://eucan.ddns.net:3000/dayoff`,
+        type: "POST",
+        dataType: "json",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        data: JSON.stringify({
+            account: userId,
+            cookie: sessionKey,
+            year: year,
+        }),
+    })
 }
 
 /**
@@ -136,6 +213,7 @@ function submitLeaveRequest() {
  * 驗證時間格式是否符合規範 (08:30 - 17:30, 只允許整點與半點)
  */
 function validTime(time) {
+    if (!time || !time.includes(":")) return false;
     const [hour, minute] = time.split(":").map(Number);
     if (hour < 8 || hour > 17) return false;
     if (hour === 8 && minute === 0) return false;
@@ -144,8 +222,8 @@ function validTime(time) {
 
 //檢查是否填寫假別
 function validType(type) {
-    if (type != "選擇假別") return true;
-} 
+    return type !== "選擇假別";
+}
 
 
 /**

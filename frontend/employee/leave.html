@@ -20,16 +20,35 @@
 				<div class="row align-items-start">
 					<div class="col text-center">
 						<div class="main">
-							<h1>請假</h1>
-							<div id="info">
-								<span>特休假查詢 : </span>
-								<select>
-									<option>當年度</option>
-									<option>下年度</option>
-								</select>
-								<button id="search">查詢</button>
-								<p id="quota"></p>
-								<p id="annual"></p>
+							<h2>請假</h2>
+							<div id="info" class="d-flex justify-content-center">
+								<table>
+									<thead>
+										<tr>
+											<th>特休假查詢 : </th>
+											<td>
+												<select>
+													<option>當年度</option>
+													<option>下年度</option>
+												</select>
+												
+											</td>
+											<td>
+												<button id="search" class="search">查詢</button>
+											</td>
+										</tr>
+									</thead>
+									<tbody>
+										<tr>
+											<th>當年度特休假總時數 : </th>
+											<td colspan="2"><p id="quota">3(hr)</p></td>
+										</tr>
+										<tr>
+											<th>當年度特休假已休時數 : </th>
+											<td colspan="2"><p id="annual">0(hr)</p></td>
+										</tr>
+									</tbody>
+								</table>
 							</div>
 							<!-- <form action="https://eucan.ddns.net:3000/request" method="post" enctype="multipart/form-data"> -->
 							<div id="dayofftypeD"  class="input">
