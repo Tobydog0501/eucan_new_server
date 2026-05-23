@@ -4,6 +4,7 @@ $(() => {
     const year = now.getFullYear();
     const sessionKey = readCookie("session");
     const userId = readCookie("id");
+    let leaveBaseYear = year;
 
     if (!sessionKey) {
         alert("請重新登入");
@@ -13,12 +14,16 @@ $(() => {
 
     loginCheck(userId, sessionKey);
 
-    // 先載入當年度資訊
-    info(userId, sessionKey, year);
+    resolveLeaveBaseYear(userId, sessionKey, year).then((baseYear) => {
+        leaveBaseYear = baseYear;
+        info(userId, sessionKey, leaveBaseYear);
+    }).catch(() => {
+        info(userId, sessionKey, leaveBaseYear);
+    });
 
     // 切換年度查詢特休假資訊
     $("#search").on("click", () => {
-        const selectedYear = $("#info select").val() === "當年度" ? year : year + 1;
+        const selectedYear = $("#info select").val() === "當年度" ? leaveBaseYear : leaveBaseYear + 1;
         info(userId, sessionKey, selectedYear);
     });
 
@@ -29,25 +34,31 @@ $(() => {
     $("#navbar-container").load("../employee/navbar.html");
 });
 
+function resolveLeaveBaseYear(userId, sessionKey, currentYear) {
+    return quota(currentYear, userId, sessionKey).then((res) => {
+        const joinTime = res && res.data && res.data[0] ? res.data[0].joinTime : "";
+        if (!joinTime) {
+            return currentYear;
+        }
+
+        const joinDate = new Date(joinTime);
+        if (isNaN(joinDate.getTime())) {
+            return currentYear;
+        }
+
+        const now = new Date();
+        const joinMonth = joinDate.getMonth();
+        const joinDay = joinDate.getDate();
+
+        if (now.getMonth() < joinMonth || (now.getMonth() === joinMonth && now.getDate() < joinDay)) {
+            return now.getFullYear() - 1;
+        }
+
+        return now.getFullYear();
+    }).catch(() => currentYear);
+}
+
 function info(userId, sessionKey, selectedYear) {
-    $.ajax({
-        url: `https://eucan.ddns.net:3000/sync`,
-        type: 'POST',
-        dataType: 'json',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        data: JSON.stringify({
-            account: userId,
-            cookie: sessionKey,
-            user: userId,
-            year: selectedYear,
-
-        }),
-    }).then(res => {
-        //console.log(res);
-    })
-
     clean();
 
     $.when(quota(selectedYear, userId, sessionKey), dayoff(selectedYear, userId, sessionKey))
@@ -55,29 +66,8 @@ function info(userId, sessionKey, selectedYear) {
             console.log(quota[0]);
             let separate = 0;
             if (quota[0].separate === true) {
-                $.confirm({
-                    title: '確認',
-                    content: '要查看上半年還是下半年',
-                    buttons: {
-                        confirm: {
-                            text: '上半年',
-                            btnClass: 'btn-blue',
-                            action: function () {
-                                separate = 0;
-                                $.alert('上半年已選擇');
-                                renderData(separate, quota, dayoff);
-                            }
-                        },
-                        cancel: {
-                            text: '下半年',
-                            action: function () {
-                                separate = 1;
-                                $.alert('下半年已選擇');
-                                renderData(separate, quota, dayoff);
-                            }
-                        }
-                    }
-                });
+                separate = window.confirm('要查看上半年嗎？按「確定」查看上半年，按「取消」查看下半年。') ? 0 : 1;
+                renderData(separate, quota, dayoff);
             } else {
                 separate = 0;
                 renderData(separate, quota, dayoff);
@@ -106,6 +96,7 @@ function info(userId, sessionKey, selectedYear) {
 
 
 }
+
 function clean() {
     $("#quota, #annual").empty();
     $("#joinTime h2").remove();
@@ -160,6 +151,16 @@ function submitLeaveRequest() {
     const leaveType = $("#type").val();
 
     console.log(leaveType);
+
+    if (!startDate || !endDate) {
+        alert("請先選擇請假起訖日期！");
+        return;
+    }
+
+    if (!reason || reason.trim().length === 0) {
+        alert("請輸入請假事由！");
+        return;
+    }
 
     // 檢查時間格式是否正確
     if (!validTime(startTime)) {
