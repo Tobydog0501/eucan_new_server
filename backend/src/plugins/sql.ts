@@ -692,7 +692,7 @@ export class sql {
       return 0;
     }
     const { m, d } = calculate(new Date(start), new Date(end));
-    if (this.checkRemainAnnual(user, parseInt(year), parseInt(`${totalTime}`), m < 6) == false) {
+    if (this.checkRemainAnnual(user, parseInt(year), parseInt(`${totalTime}`) - ticket.totalTime, m < 6) == false) {
       log.logFormat(`${user} try to request a dayoff but exceed annual quota.`);
       return null;
     }
