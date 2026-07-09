@@ -5,6 +5,7 @@ $(() => {
     const sessionKey = readCookie("session");
     const userId = readCookie("id");
     let leaveBaseYear = year;
+    const yearText = $("#info select").val();
 
     if (!sessionKey) {
         alert("請重新登入");
@@ -16,16 +17,16 @@ $(() => {
 
     resolveLeaveBaseYear(userId, sessionKey, year).then((baseYear) => {
         leaveBaseYear = baseYear;
-        info(userId, sessionKey, leaveBaseYear);
+        info(userId, sessionKey, leaveBaseYear, yearText);
     }).catch(() => {
-        info(userId, sessionKey, leaveBaseYear);
+        info(userId, sessionKey, leaveBaseYear, yearText);
     });
 
     // 切換年度查詢特休假資訊
     $("#search").on("click", () => {
         const selectedYear = $("#info select").val() === "當年度" ? leaveBaseYear : leaveBaseYear + 1;
-        const text = $("#info select").val();
-        info(userId, sessionKey, selectedYear, text);
+        const yearText = $("#info select").val();
+        info(userId, sessionKey, selectedYear, yearText);
     });
 
     // 送出請假申請
@@ -59,8 +60,10 @@ function resolveLeaveBaseYear(userId, sessionKey, currentYear) {
     }).catch(() => currentYear);
 }
 
-function info(userId, sessionKey, selectedYear, text) {
+function info(userId, sessionKey, selectedYear, yearText) {
     clean();
+    $("#quota-text").text(yearText);
+    $("#annual-text").text(yearText);
 
     $.when(quota(selectedYear, userId, sessionKey), dayoff(selectedYear, userId, sessionKey))
         .then(function (quota, dayoff) {
@@ -86,8 +89,6 @@ function info(userId, sessionKey, selectedYear, text) {
 
                 $("#quota").text(`${inf.quota}(hr)`);
                 $("#annual").text(`${inf.annual}(hr)`);
-                $("#quota-text").text(text);
-                $("#annual-text").text(text);
 
             }
         })
@@ -103,6 +104,7 @@ function info(userId, sessionKey, selectedYear, text) {
 function clean() {
     $("#quota, #annual").empty();
     $("#joinTime h2").remove();
+    $("#quota-text, #annual-text").empty();
 };
 
 
