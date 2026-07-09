@@ -59,7 +59,7 @@ function resolveLeaveBaseYear(userId, sessionKey, currentYear) {
     }).catch(() => currentYear);
 }
 
-function info(userId, sessionKey, selectedYear) {
+function info(userId, sessionKey, selectedYear, text) {
     clean();
 
     $.when(quota(selectedYear, userId, sessionKey), dayoff(selectedYear, userId, sessionKey))
