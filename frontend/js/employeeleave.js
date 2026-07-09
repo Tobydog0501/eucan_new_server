@@ -24,7 +24,8 @@ $(() => {
     // 切換年度查詢特休假資訊
     $("#search").on("click", () => {
         const selectedYear = $("#info select").val() === "當年度" ? leaveBaseYear : leaveBaseYear + 1;
-        info(userId, sessionKey, selectedYear);
+        const text = $("#info select").val();
+        info(userId, sessionKey, selectedYear, text);
     });
 
     // 送出請假申請
@@ -85,6 +86,8 @@ function info(userId, sessionKey, selectedYear) {
 
                 $("#quota").text(`${inf.quota}(hr)`);
                 $("#annual").text(`${inf.annual}(hr)`);
+                $("#quota-text").text(text);
+                $("#annual-text").text(text);
 
             }
         })
