@@ -31,7 +31,7 @@ app.all('/', (req: Request, res: Response) => {
   res.send("System online.");
 });
 
-const posts: Array<string> = ['login', 'users', 'session', "register", 'dayoff', 'request', 'query', 'permit', 'init', 'approved', 'empquery', 'delete', "modify", "quota", "clockin", "sync", "calendar", "clrecord", "tmodify", "modstatus"];
+const posts: Array<string> = ['login', 'users', 'session', "register", 'dayoff', 'request', 'query', 'permit', 'init', 'approved', 'empquery', 'delete', "modify", "quota", "clockin", "sync", "calendar", "clrecord", "tmodify", "modemp"];
 posts.forEach(v => {
   const utils = require(`./system/${v}.js`).bind(null, sqlPlugin, log, mailers);
   app.post(`/${v}`, (req: Request, res: Response) => {
