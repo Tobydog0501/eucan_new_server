@@ -214,7 +214,12 @@ app.get('/api/clockin/day', async (req: Request, res: Response) => {
     const monthKey = month.toString().padStart(2, '0');
     const dayKey = day.toString().padStart(2, '0');
     const targetDate = `${year}-${monthKey}-${dayKey}`;
-    const users = sqlPlugin.getAllUsers().filter((user) => user.id !== 'monitor' && user.status === 1);
+    const users = sqlPlugin.getAllUsers().filter((user) =>
+      user.id !== 'monitor' &&
+      user.status === 1 &&
+      user.type === 'employee' &&
+      user.name.trim().length > 0
+    );
     const records = await sqlPlugin.clockinRecord(year, monthKey);
     const dayRecords = records.filter((item) => item.date === targetDate);
 
