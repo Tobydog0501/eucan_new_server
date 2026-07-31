@@ -12,7 +12,40 @@ $(function () {
 
     const apiBase = `${window.location.protocol}//${window.location.hostname}:3000`;
     const weekLabels = ["日", "一", "二", "三", "四", "五", "六"];
-    const monthNames = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+
+    async function fetchAvailableYears() {
+        const url = `${apiBase}/api/calendar/years?account=${encodeURIComponent(userId)}&cookie=${encodeURIComponent(sessionKey)}`;
+        try {
+            const resp = await fetch(url, { method: 'GET', credentials: 'include' });
+            if (!resp.ok) {
+                console.warn('Failed to fetch calendar years', resp.status);
+                return [];
+            }
+            const data = await resp.json();
+            return Array.isArray(data?.years) ? data.years.map((year) => parseInt(year, 10)).filter((year) => !Number.isNaN(year)) : [];
+        } catch (error) {
+            console.error(error);
+            return [];
+        }
+    }
+
+    function populateYearOptions(years) {
+        const select = $('#year');
+        const uniqueYears = Array.from(new Set(years)).sort((a, b) => a - b);
+        const nowYear = new Date().getFullYear();
+        const fallbackYear = uniqueYears.includes(nowYear) ? nowYear : (uniqueYears[uniqueYears.length - 1] || nowYear);
+
+        select.empty();
+        uniqueYears.forEach((year) => {
+            select.append($('<option>').val(String(year)).text(`${year}年`));
+        });
+
+        if (uniqueYears.length === 0) {
+            select.append($('<option>').val(String(fallbackYear)).text(`${fallbackYear}年`));
+        }
+
+        select.val(String(fallbackYear));
+    }
 
     function escapeHtml(text) {
         return String(text)
@@ -78,14 +111,18 @@ $(function () {
         renderCalendar(data);
     }
 
-    // 預設載入當月份
-    const nowYear = new Date().getFullYear();
-    const nowMonth = new Date().getMonth() + 1; // 取得當前月份 (1-12)
-    $("#month").val(nowMonth + "月");
-    $("#year").val(nowYear + "年");
-    updateCalendar();
+    async function initializeCalendar() {
+        const years = await fetchAvailableYears();
+        populateYearOptions(years);
+
+        const nowMonth = new Date().getMonth() + 1;
+        $("#month").val(String(nowMonth));
+
+        await updateCalendar();
+    }
 
     // 監聽 `#month` / `#year` 變更事件
     $("#month").change(updateCalendar);
     $("#year").change(updateCalendar);
+    initializeCalendar();
 });

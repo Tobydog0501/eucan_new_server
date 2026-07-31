@@ -1,10 +1,12 @@
 document.addEventListener("DOMContentLoaded", function () {
     // 取得目前頁面檔名
     const currentPage = window.location.pathname.split("/").pop();
+    const isPersonnelDetailPage = currentPage === "employeeDetail.html";
 
     // 遍歷所有導覽列連結，標記 active 頁面
     document.querySelectorAll(".navbar-nav .nav-link").forEach(link => {
-        if (link.getAttribute("href") === currentPage) {
+        const linkTarget = link.getAttribute("href");
+        if (linkTarget === currentPage || (isPersonnelDetailPage && linkTarget === "./personnel.html")) {
             link.classList.add("active");
         } else {
             link.classList.remove("active");

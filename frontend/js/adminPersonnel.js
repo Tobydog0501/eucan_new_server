@@ -84,10 +84,13 @@ $(function () {
                     $("<td>").html(d.email),
                     $("<td>").html(d.mgroup === 1 ? "CAT" : d.mgroup === 0 ? "JEFF" : ""),
                     $("<td>").html(d.permit === 1 ? "須審核" : d.permit === 0 ? "無須審核" : ""),
+                    $("<td>").html(d.status === 1 ? "在職" : "離職"),
                     $("<td>").append(
                         $("<button>")
-                            .html("刪除")
-                            .click(() => deleteUser(d.id))
+                            .html("員工詳細資料")
+                            .click(() => {
+                                window.location.href = `./employeeDetail.html?id=${encodeURIComponent(d.id)}`;
+                            })
                     )
                 );
 
@@ -105,36 +108,6 @@ $(function () {
             $('#pageInfo').text(`目前在第 ${currentPage + 1} 頁，共 ${Math.ceil(totalItems / itemsPerPage)} 頁`);
         }
 
-        // 刪除用戶
-        function deleteUser(id) {
-            $.ajax({
-                url: `https://eucan.ddns.net:3000/delete`,
-                type: 'POST',
-                dataType: 'json',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                data: JSON.stringify({
-                    account: userId,
-                    cookie: sessionKey,
-                    user: id,
-                }),
-            }).then(() => {
-                // 從資料中移除該用戶
-                data = data.filter((item) => item.id !== id);
-
-                // 刪除成功後更新頁面
-                alert("刪除成功！");
-
-                // 確保 currentPage 不會超出範圍
-                const filteredData = data.filter(d => d.type === currentType);
-                if (currentPage * itemsPerPage >= filteredData.length && currentPage > 0) {
-                    currentPage--;
-                }
-
-                displayPage(currentPage, currentType);
-            });
-        }
     });
 });
 

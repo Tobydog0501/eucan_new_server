@@ -13,11 +13,17 @@ module.exports = function utils(sqlPlugin: sql, log: logger, mailer: mailer, req
   const account = dataReceived["account"] as string;
   const cookie = dataReceived["cookie"] as string;
   const user = dataReceived["user"] as string;
+  const pwd = dataReceived["pwd"] as string;
+  const email = dataReceived["email"] as string;
   const name = dataReceived["name"] as string;
+  const joinTime = dataReceived["date"] as string;
+  const type = dataReceived["type"] as string;
+  const mgroup = dataReceived["mgroup"] as digit;
+  const permit = dataReceived["permit"] as digit;
   const status = dataReceived["status"] as digit;
-  const leaveDate = dataReceived["leaveDate"] as string;
+  let leaveDate = dataReceived["leaveDate"] as string | null;
 
-  if (!valid(dataReceived, ["account", "cookie", "user", "name", "status"])) {
+  if (!valid(dataReceived, ["account", "cookie", "user", "pwd", "email", "name", "date", "type", "mgroup", "permit", "status"])) {
     res.sendStatus(400);
     return;
   }
@@ -28,40 +34,75 @@ module.exports = function utils(sqlPlugin: sql, log: logger, mailer: mailer, req
     return;
   }
 
-  if (`${status}` != "0" || `${status}` != "1") {
-    res.sendStatus(400);
-    return;
-  }
-  if (leaveDate != "null" && !isValidDate(leaveDate)) {
+  if (`${status}` !== "0" && `${status}` !== "1") {
     res.sendStatus(400);
     return;
   }
 
-  sqlPlugin.modifyEmployeeInfo(user, name, status, leaveDate);
+  if (`${mgroup}` !== "0" && `${mgroup}` !== "1") {
+    res.sendStatus(400);
+    return;
+  }
+
+  if (`${permit}` !== "0" && `${permit}` !== "1") {
+    res.sendStatus(400);
+    return;
+  }
+
+  if (!isValidJoinDate(joinTime)) {
+    res.sendStatus(400);
+    return;
+  }
+
+  if (`${status}` === "0") {
+    if (leaveDate == null || leaveDate === "") {
+      res.sendStatus(400);
+      return;
+    }
+    if (!isValidLeaveDate(leaveDate)) {
+      res.sendStatus(400);
+      return;
+    }
+  } else {
+    leaveDate = null;
+  }
+
+  sqlPlugin.modifyEmployeeInfo(user, pwd, type, email, name, joinTime, mgroup, permit, status, leaveDate);
+  sqlPlugin.resyncEmployeeDayoff(user);
 
   res.sendStatus(200);
 }
 
-function isValidDate(dateString: string): boolean {
-  // 1. Strict Regex to check the format: YYYY-MM-DD HH:mm
+function isValidJoinDate(dateString: string): boolean {
+  const regex = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+  const match = dateString.match(regex);
+
+  if (!match) return false;
+
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  const day = parseInt(match[3], 10);
+  const date = new Date(year, month - 1, day);
+  date.setFullYear(year);
+
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+}
+
+function isValidLeaveDate(dateString: string): boolean {
   const regex = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01]) ([01]\d|2[0-3]):([0-5]\d)$/;
   const match = dateString.match(regex);
 
-  if (!match) return false; // Fails format check
+  if (!match) return false;
 
-  // Extract parts from the regex match
   const year = parseInt(match[1], 10);
   const month = parseInt(match[2], 10);
   const day = parseInt(match[3], 10);
   const hour = parseInt(match[4], 10);
   const minute = parseInt(match[5], 10);
 
-  // 2. Semantic validation to catch invalid dates (e.g., Feb 30)
   const date = new Date(year, month - 1, day, hour, minute);
-  date.setFullYear(year); // Fixes JS edge case where years 0-99 map to 1900-1999
+  date.setFullYear(year);
 
-  // JS Date will automatically roll over invalid dates (e.g., Feb 30 -> March 2).
-  // If the extracted parts match the parsed Date parts, the date is valid!
   return (
     date.getFullYear() === year &&
     date.getMonth() === month - 1 &&
