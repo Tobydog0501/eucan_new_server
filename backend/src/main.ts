@@ -218,16 +218,39 @@ app.get('/api/clockin/day', async (req: Request, res: Response) => {
     const records = await sqlPlugin.clockinRecord(year, monthKey);
     const dayRecords = records.filter((item) => item.date === targetDate);
 
-    const data = users.map((user) => {
-      const userRecords = dayRecords.filter((record) => record.id === user.id);
-      const clockin = userRecords.find((record) => record.clockin) || null;
-      const clockout = userRecords.find((record) => record.clockout) || null;
-      return {
+    const mergedRecords = new Map<string, { id: string, name: string, clockin: string | null, clockout: string | null, hasRecord: boolean }>();
+
+    for (const user of users) {
+      mergedRecords.set(user.id, {
         id: user.id,
         name: user.name,
-        clockin: clockin ? clockin.clockin : null,
-        clockout: clockout ? clockout.clockout : null,
-        hasRecord: userRecords.length > 0,
+        clockin: null,
+        clockout: null,
+        hasRecord: false,
+      });
+    }
+
+    for (const record of dayRecords) {
+      const current = mergedRecords.get(record.id);
+      if (!current) {
+        continue;
+      }
+      if (record.clockin && !current.clockin) {
+        current.clockin = record.clockin;
+      }
+      if (record.clockout && !current.clockout) {
+        current.clockout = record.clockout;
+      }
+      current.hasRecord = true;
+    }
+
+    const data = Array.from(mergedRecords.values()).map((item) => {
+      return {
+        id: item.id,
+        name: item.name,
+        clockin: item.clockin,
+        clockout: item.clockout,
+        hasRecord: item.hasRecord,
       };
     });
 
