@@ -145,6 +145,52 @@ app.get('/api/calendar/view', async (req: Request, res: Response) => {
   }
 });
 
+// Public view endpoint: return clock-in records JSON (admin only)
+app.get('/api/clockin/view', async (req: Request, res: Response) => {
+  try {
+    const account = String(req.query.account || '');
+    const cookie = String(req.query.cookie || '');
+    const year = parseInt(String(req.query.year || '0'));
+    const month = parseInt(String(req.query.month || '0'));
+
+    if (!account || !cookie || !year || !month) {
+      res.sendStatus(400);
+      return;
+    }
+
+    const ret = sqlPlugin.checkHash(account, cookie);
+    if (ret == null || ret['accountType'] == 'employee') {
+      res.sendStatus(403);
+      return;
+    }
+
+    const monthKey = month.toString().padStart(2, '0');
+    const records = await sqlPlugin.clockinRecord(year, monthKey);
+    const totalDays = new Date(year, month, 0).getDate();
+    const days: Array<{ day: number, records: Array<{ id: string, name: string, date: string, clockin: string | null, clockout: string | null }> }> = [];
+
+    for (let day = 1; day <= totalDays; day++) {
+      const dayKey = `${year}-${monthKey}-${day.toString().padStart(2, '0')}`;
+      const dayRecords = records.filter((item) => item.date === dayKey);
+      days.push({
+        day,
+        records: dayRecords.map((item) => ({
+          id: item.id,
+          name: item.name,
+          date: item.date,
+          clockin: item.clockin,
+          clockout: item.clockout,
+        }))
+      });
+    }
+
+    res.json({ year, month, days });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
+});
+
 // Export endpoint: generate and download Excel (admin only)
 app.get('/api/calendar/export', async (req: Request, res: Response) => {
   try {
