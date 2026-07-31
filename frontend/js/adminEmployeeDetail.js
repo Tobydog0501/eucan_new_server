@@ -57,7 +57,7 @@ $(function () {
     function renderEmployee(employee) {
         $("#id").val(employee.id);
         $("#pwd").val(employee.pwd || "");
-        $("#name").val(employee.name || "");
+        $("#employeeName").val(employee.name || "");
         $("#email").val(employee.email || "");
         $("#joinTime").val((employee.joinTime || "").split(" ")[0]);
         $("#type").val(employee.type || "employee");
@@ -102,7 +102,7 @@ $(function () {
             user: employeeId,
             pwd: $("#pwd").val(),
             email: $("#email").val(),
-            name: $("#name").val(),
+            name: $("#employeeName").val(),
             date: joinTime,
             type: $("#type").val(),
             mgroup: $("#mgroup").val(),
@@ -114,7 +114,6 @@ $(function () {
         $.ajax({
             url: `https://eucan.ddns.net:3000/modemp`,
             type: 'POST',
-            dataType: 'json',
             headers: {
                 'Content-Type': 'application/json',
             },
