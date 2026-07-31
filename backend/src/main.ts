@@ -191,6 +191,53 @@ app.get('/api/clockin/view', async (req: Request, res: Response) => {
   }
 });
 
+// Public view endpoint: return clock-in status for a specific day (admin only)
+app.get('/api/clockin/day', async (req: Request, res: Response) => {
+  try {
+    const account = String(req.query.account || '');
+    const cookie = String(req.query.cookie || '');
+    const year = parseInt(String(req.query.year || '0'));
+    const month = parseInt(String(req.query.month || '0'));
+    const day = parseInt(String(req.query.day || '0'));
+
+    if (!account || !cookie || !year || !month || !day) {
+      res.sendStatus(400);
+      return;
+    }
+
+    const ret = sqlPlugin.checkHash(account, cookie);
+    if (ret == null || ret['accountType'] == 'employee') {
+      res.sendStatus(403);
+      return;
+    }
+
+    const monthKey = month.toString().padStart(2, '0');
+    const dayKey = day.toString().padStart(2, '0');
+    const targetDate = `${year}-${monthKey}-${dayKey}`;
+    const users = sqlPlugin.getAllUsers().filter((user) => user.id !== 'monitor' && user.status === 1);
+    const records = await sqlPlugin.clockinRecord(year, monthKey);
+    const dayRecords = records.filter((item) => item.date === targetDate);
+
+    const data = users.map((user) => {
+      const userRecords = dayRecords.filter((record) => record.id === user.id);
+      const clockin = userRecords.find((record) => record.clockin) || null;
+      const clockout = userRecords.find((record) => record.clockout) || null;
+      return {
+        id: user.id,
+        name: user.name,
+        clockin: clockin ? clockin.clockin : null,
+        clockout: clockout ? clockout.clockout : null,
+        hasRecord: userRecords.length > 0,
+      };
+    });
+
+    res.json({ year, month, day, records: data });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
+});
+
 // Export endpoint: generate and download Excel (admin only)
 app.get('/api/calendar/export', async (req: Request, res: Response) => {
   try {

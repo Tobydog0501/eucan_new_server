@@ -59,7 +59,7 @@ $(function () {
                 const reminders = Array.isArray(cell.reminders) ? cell.reminders : [];
                 const eventsHtml = reminders.length
                     ? reminders.map(item => `<div class="cal-line">${escapeHtml(item)}</div>`).join("")
-                    : '<div class="calendar-no-event">當日無排程</div>';
+                    : '';
                 html += `<td><div class="cal-day-label">${cell.day}日</div>${eventsHtml}</td>`;
             }
             html += "</tr>";
