@@ -35,6 +35,26 @@ td {
     gap: 0.5rem;
 }
 
+.leave-detail-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #475569;
+    border-radius: 999px;
+    padding: 0.45rem 1rem;
+    font-weight: 700;
+    color: #334155;
+    background: #f8fafc;
+    text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.leave-detail-btn:hover {
+    transform: translateY(-1px);
+    background: #475569;
+    color: #ffffff;
+}
+
 .leave-filter-btn {
     border: 2px solid transparent;
     border-radius: 999px;
@@ -95,7 +115,8 @@ td {
         justify-content: center;
     }
 
-    .leave-filter-btn {
+    .leave-filter-btn,
+    .leave-detail-btn {
         flex: 1 1 30%;
         min-width: 120px;
     }

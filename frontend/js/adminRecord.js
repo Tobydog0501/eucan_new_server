@@ -129,8 +129,11 @@ $(function () {
         const years = await fetchAvailableYears();
         populateYearOptions(years);
 
-        const nowMonth = new Date().getMonth() + 1;
-        $("#month").val(String(nowMonth));
+        const currentMonth = String(new Date().getMonth() + 1);
+        $("#month").val(currentMonth);
+        if ($("#month").val() !== currentMonth) {
+            $("#month").find(`option[value="${currentMonth}"]`).prop("selected", true);
+        }
 
         updateDayOptions();
         const currentDay = String(new Date().getDate());
@@ -138,8 +141,6 @@ $(function () {
 
         updateClockin();
     }
-
-    const now = new Date();
 
     $("#upData").on("click", updateClockin);
     $("#month, #year").on("change", () => {

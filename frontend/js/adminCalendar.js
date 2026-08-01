@@ -47,6 +47,14 @@ $(function () {
         select.val(String(fallbackYear));
     }
 
+    function setCurrentMonth(monthSelect) {
+        const currentMonth = String(new Date().getMonth() + 1);
+        monthSelect.val(currentMonth);
+        if (monthSelect.val() !== currentMonth) {
+            monthSelect.find(`option[value="${currentMonth}"]`).prop("selected", true);
+        }
+    }
+
     function escapeHtml(text) {
         return String(text)
             .replace(/&/g, "&amp;")
@@ -115,8 +123,7 @@ $(function () {
         const years = await fetchAvailableYears();
         populateYearOptions(years);
 
-        const nowMonth = new Date().getMonth() + 1;
-        $("#month").val(String(nowMonth));
+        setCurrentMonth($("#month"));
 
         await updateCalendar();
     }
