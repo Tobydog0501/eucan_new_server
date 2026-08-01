@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,39 +9,53 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="../css/employeeDocumental.css">
 </head>
+
 <body>
+
     <div id="navbar-container"></div>
+
     <section class="container my-4">
         <div class="row text-center">
             <h1 class="mb-3">請假紀錄</h1>
             <div class="col-12 d-flex justify-content-center gap-2">
-                <input type="text" class="form-control w-25" placeholder="年度" id="year"/>
+                <input type="text" class="form-control w-25" placeholder="年度" id="year" />
                 <button class="btn btn-primary" id="search">搜尋</button>
             </div>
         </div>
     </section>
-    <div class="container">
-        <div class="row g-4">
-            <div class="col-lg-4 col-md-6">
-                <section class="p-3 border rounded shadow-sm bg-light">
-                    <h2 class="text-center">正在審核的假單</h2>
-                    <div id="card-body-wait" class="overflow-auto" style="max-height: 500px;"></div>
-                </section>
+
+    <main>
+        <div class="container my-4">
+            <div class="leave-filter-group mb-3" role="group" aria-label="假單狀態篩選">
+                <button id="wait" class="leave-filter-btn leave-filter-wait" type="button">待審核</button>
+                <button id="approve" class="leave-filter-btn leave-filter-approve" type="button">已核准</button>
+                <button id="reject" class="leave-filter-btn leave-filter-reject" type="button">已拒絕</button>
             </div>
-            <div class="col-lg-4 col-md-6">
-                <section class="p-3 border rounded shadow-sm bg-light">
-                    <h2 class="text-center">核准的假單</h2>
-                    <div id="card-body-approve" class="overflow-auto" style="max-height: 500px;"></div>
-                </section>
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>流水號</th>
+                            <th>員工姓名</th>
+                            <th>請假類別</th>
+                            <th>請假事由</th>
+                            <th>開始時間</th>
+                            <th>結束時間</th>
+                            <th>狀態</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table"></tbody>
+                </table>
             </div>
-            <div class="col-lg-4 col-md-12">
-                <section class="p-3 border rounded shadow-sm bg-light">
-                    <h2 class="text-center">被拒絕的假單</h2>
-                    <div id="card-body-reject" class="overflow-auto" style="max-height: 500px;"></div>
-                </section>
-            </div>
+            <nav class="d-flex justify-content-between align-items-center my-3">
+                <button id="prevPage" class="btn btn-primary">上一頁</button>
+                <span id="pageInfo"></span>
+                <button id="nextPage" class="btn btn-primary">下一頁</button>
+            </nav>
         </div>
-    </div>
+    </main>
+
+
     <section class="container my-4 text-center">
         <a class="btn btn-secondary" href="./information.html">查看詳細資料</a>
     </section>
@@ -49,4 +64,5 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="../js/employeeDocumental.js"></script>
 </body>
+
 </html>

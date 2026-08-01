@@ -1,48 +1,102 @@
-/* 🔹 Header 樣式 */
 header li {
-    margin: 0 20px; /* 保持原來的間距 */
+    margin: 0px 20px;
 }
+
 
 nav {
     font-size: 20px;
 }
 
+
 header img {
     width: 130px;
 }
 
-/* 🔹 卡片樣式 */
-.card {
-    width: 330px;
-    font-size: 22px;  /* 適當調整大小，避免文字過大 */
-    margin-top: 50px;
-    font-weight: bold;
-    border-radius: 10px; /* 增加圓角，使外觀更柔和 */
-    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2); /* 添加陰影增強立體感 */
-    padding: 20px;
-    background: #fff; /* 白色背景，確保清晰可讀 */
-}
 
-.card-title {
-    font-size: 25px;
-    font-weight: bold;
-    color: #333; /* 讓標題顏色更顯眼 */
+.search {
+    margin: 10px;
+    font-size: 35px;
 }
 
 
-/* 🔹 響應式設計，適用於手機 */
+.table {
+    font-size: 20px;
+    border: 1px solid rgb(140 140 140);
+}
+
+
+td {
+    height: 40px;
+}
+
+.leave-filter-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.leave-filter-btn {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    padding: 0.45rem 1rem;
+    font-weight: 700;
+    transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.leave-filter-btn:hover {
+    transform: translateY(-1px);
+}
+
+.leave-filter-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35);
+}
+
+.leave-filter-btn.active {
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.2);
+    transform: translateY(-1px);
+}
+
+.leave-filter-wait {
+    background: #fef3c7;
+    border-color: #f59e0b;
+    color: #92400e;
+}
+
+.leave-filter-wait.active {
+    background: #f59e0b;
+    color: #ffffff;
+}
+
+.leave-filter-approve {
+    background: #dcfce7;
+    border-color: #16a34a;
+    color: #166534;
+}
+
+.leave-filter-approve.active {
+    background: #16a34a;
+    color: #ffffff;
+}
+
+.leave-filter-reject {
+    background: #fee2e2;
+    border-color: #dc2626;
+    color: #991b1b;
+}
+
+.leave-filter-reject.active {
+    background: #dc2626;
+    color: #ffffff;
+}
+
 @media (max-width: 768px) {
-    nav {
-        font-size: 18px;
+    .leave-filter-group {
+        justify-content: center;
     }
 
-    .card {
-        width: 100%; /* 讓卡片在小螢幕上自適應 */
-        font-size: 20px;
-    }
-
-    .btn {
-        font-size: 20px;
-        padding: 10px 16px;
+    .leave-filter-btn {
+        flex: 1 1 30%;
+        min-width: 120px;
     }
 }

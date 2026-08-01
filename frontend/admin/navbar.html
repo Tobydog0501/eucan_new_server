@@ -38,9 +38,14 @@
             <a class="nav-link" href="./record.html">打卡紀錄</a>
           </li>
         </ul>
-        <form class="d-flex">
-          <p id="name">0</p>
-        </form>
+        <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+          <span class="text-secondary fw-bold">字體</span>
+          <button type="button" id="fontDown" class="btn btn-outline-secondary btn-sm" aria-label="縮小字體">A-</button>
+          <button type="button" id="fontReset" class="btn btn-outline-secondary btn-sm" aria-label="重設字體">A</button>
+          <button type="button" id="fontUp" class="btn btn-outline-secondary btn-sm" aria-label="放大字體">A+</button>
+          <span id="name" class="fw-bold text-primary mb-0">0</span>
+          <button type="button" id="logoutBtn" class="btn btn-outline-danger btn-sm">登出</button>
+        </div>
       </div>
     </div>
   </nav>

@@ -11,8 +11,6 @@ $(function () {
     $("#navbar-container").load("../admin/navbar.html");
 
     const apiBase = `${window.location.protocol}//${window.location.hostname}:3000`;
-    const fontSizes = [0.9, 1, 1.1, 1.2, 1.35];
-    let fontSizeIndex = 1;
 
     async function fetchAvailableYears() {
         const url = `${apiBase}/api/clockin/years?account=${encodeURIComponent(userId)}&cookie=${encodeURIComponent(sessionKey)}`;
@@ -46,10 +44,6 @@ $(function () {
         }
 
         select.val(String(fallbackYear));
-    }
-
-    function applyFontSize() {
-        document.documentElement.style.setProperty("--record-font-scale", String(fontSizes[fontSizeIndex]));
     }
 
     function updateDayOptions() {
@@ -141,27 +135,6 @@ $(function () {
     }
 
     const now = new Date();
-
-    applyFontSize();
-
-    $("#fontDown").on("click", () => {
-        if (fontSizeIndex > 0) {
-            fontSizeIndex -= 1;
-            applyFontSize();
-        }
-    });
-
-    $("#fontReset").on("click", () => {
-        fontSizeIndex = 1;
-        applyFontSize();
-    });
-
-    $("#fontUp").on("click", () => {
-        if (fontSizeIndex < fontSizes.length - 1) {
-            fontSizeIndex += 1;
-            applyFontSize();
-        }
-    });
 
     $("#upData").on("click", updateClockin);
     $("#month, #year").on("change", () => {
