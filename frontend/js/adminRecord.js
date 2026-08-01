@@ -91,17 +91,22 @@ $(function () {
         }
 
         const targetDate = `${data.year}-${String(data.month).padStart(2, "0")}-${String(data.day).padStart(2, "0")}`;
+        const sortedRecords = data.records.slice().sort((a, b) => {
+            const aId = String(a.id || "");
+            const bId = String(b.id || "");
+            return aId.localeCompare(bId, "zh-Hant", { numeric: true, sensitivity: "base" });
+        });
         let html = `<div class="record-summary">${targetDate}</div><div class="record-grid">`;
 
-        for (const record of data.records) {
-            const clockIn = record.clockin ? escapeHtml(record.clockin) : "這個人沒有打卡";
-            const clockOut = record.clockout ? escapeHtml(record.clockout) : "這個人沒有打卡";
+        for (const record of sortedRecords) {
+            const clockIn = record.clockin ? escapeHtml(record.clockin) : "無";
+            const clockOut = record.clockout ? escapeHtml(record.clockout) : "無";
             const statusText = record.hasRecord ? "" : '<div class="record-missing">這個人沒有打卡</div>';
             html += `
                 <div class="record-card">
                     <div class="record-card-name">${escapeHtml(record.name)}</div>
-                    <div class="record-card-row"><span>上班打卡</span><span>${clockIn}</span></div>
-                    <div class="record-card-row"><span>下班打卡</span><span>${clockOut}</span></div>
+                    <div class="record-card-row"><span>上班</span><span>${clockIn}</span></div>
+                    <div class="record-card-row"><span>下班</span><span>${clockOut}</span></div>
                     ${statusText}
                 </div>
             `;
