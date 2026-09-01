@@ -207,16 +207,8 @@ export async function main(year: number, month: number, sqlPlugin: sql): Promise
   // ---------------------------
   // Write the Excel File
   // ---------------------------
-  workbook.xlsx.writeFile(`/app/calendars/${year}-${month}calendar.xlsx`)
-    .then(() => {
-      console.log('Excel file "calendar.xlsx" has been created.');
-    })
-    .catch((err) => {
-      console.error(err);
-    });
-  return new Promise(res => {
-    res();
-  })
+  await workbook.xlsx.writeFile(`/app/calendars/${year}-${month}calendar.xlsx`);
+  console.log('Excel file "calendar.xlsx" has been created.');
 }
 
 // module.exports = main;

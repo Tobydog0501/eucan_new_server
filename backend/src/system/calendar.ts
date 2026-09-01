@@ -27,8 +27,13 @@ module.exports = async function utils(sqlPlugin:sql,log:logger,mailer:mailer,req
         return;
     }
     log.logFormat(`${account} is requesting a calendar.`);
-    await main(parseInt(`${year}`),parseInt(`${month}`),sqlPlugin);
-    log.logFormat(`Calendar has generated. Sending File /app/calendars/${year}-${month}calendar.xlsx...`);
-    res.sendStatus(200);
+    try {
+        await main(parseInt(`${year}`),parseInt(`${month}`),sqlPlugin);
+        log.logFormat(`Calendar has generated. Sending File /app/calendars/${year}-${month}calendar.xlsx...`);
+        res.sendStatus(200);
+    } catch (e) {
+        log.logFormat(`Failed to generate calendar /app/calendars/${year}-${month}calendar.xlsx: ${String(e)}`);
+        res.sendStatus(500);
+    }
     // res.download(`/app/calendars/${year}-${month}calendar.xlsx`,`${year}-${month}calendar.xlsx`);
 }
