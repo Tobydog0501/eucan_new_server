@@ -125,6 +125,36 @@ $(function () {
         renderClockin(data);
     }
 
+    async function writeClockinArchive() {
+        const year = parseInt($("#year").val(), 10);
+        const month = parseInt($("#month").val(), 10);
+        try {
+            const resp = await fetch(`${apiBase}/clrecord`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({
+                    account: userId,
+                    cookie: sessionKey,
+                    year,
+                    month,
+                }),
+            });
+            return resp.status === 200;
+        } catch (e) {
+            console.error(e);
+            return false;
+        }
+    }
+
+    async function reloadClockin() {
+        const liveView = updateClockin();
+        const archiveWrite = writeClockinArchive();
+        await liveView;
+        const wrote = await archiveWrite;
+        alert(wrote ? "備查檔已寫入" : "備查檔寫入失敗");
+    }
+
     async function initializeClockin() {
         const years = await fetchAvailableYears();
         populateYearOptions(years);
@@ -142,7 +172,7 @@ $(function () {
         updateClockin();
     }
 
-    $("#upData").on("click", updateClockin);
+    $("#upData").on("click", reloadClockin);
     $("#month, #year").on("change", () => {
         updateDayOptions();
         updateClockin();
