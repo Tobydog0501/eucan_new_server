@@ -20,10 +20,9 @@ $(function() {
 			}),
 		}).then(res=>{
 			// console.log(res);
-			document.cookie = `session=${res["sessionKey"]};`;
 			addCookie("session",res["sessionKey"]);
 			addCookie("id",$("#code").val());
-			addCookie("name", res["name"]);
+			addCookie("name", res["name"] || "");
 			window.location = `${window.location.origin}/${res["accountType"]=="employee"?"employee/employeeMain.html":res["accountType"]=="admin"?"admin/review.html":""}`
 		}).catch(rej=>{
 			alert("帳號或密碼錯誤");

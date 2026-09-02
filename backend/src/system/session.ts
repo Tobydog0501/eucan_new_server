@@ -22,6 +22,7 @@ module.exports = function utils(sqlPlugin:sql,log:logger,mailer:mailer,req:Reque
         return;
     }
     res.json({
-        "status":200
+        "status":200,
+        "name": ret["name"] || ""
     });
 }

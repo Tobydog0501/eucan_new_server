@@ -26,12 +26,21 @@
         background: #dc3545;
         color: #ffffff;
       }
+
+      .navbar-greeting {
+        max-width: 45vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
     </style>
     <div class="container-fluid">
       <!-- Logo -->
       <a class="navbar-brand" href="#">
         <img src="../img/logo.png" alt="公司 Logo" height="55" />
       </a>
+
+      <span id="name" class="user-greeting navbar-greeting fw-bold text-primary d-lg-none ms-auto me-2"></span>
 
       <!-- 漢堡選單（小螢幕） -->
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent"
@@ -65,7 +74,7 @@
           </li>
         </ul>
         <div class="navbar-actions">
-          <span id="name" class="fw-bold text-primary mb-0">0</span>
+          <span class="user-greeting fw-bold text-primary mb-0 d-none d-lg-inline"></span>
           <button type="button" id="logoutBtn" class="navbar-logout-btn">登出</button>
         </div>
       </div>

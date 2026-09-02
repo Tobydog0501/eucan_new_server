@@ -1,10 +1,23 @@
+function decodeCookieValue(value) {
+	if (value == null) return value;
+	try {
+		return decodeURIComponent(value);
+	} catch (e) {
+		return value;
+	}
+}
+
 function cookieToObj(){
 	var cookieString = document.cookie;
 	var cookieData = {}
-	cookieString.split(/; ?/gm).forEach((val,i,cookieList)=>{
+	cookieString.split(/; ?/gm).forEach((val)=>{
         if(val=="") return;
-		let a = val.split("=");
-		cookieData[a[0]] = a[1];
+		const eq = val.indexOf("=");
+		if (eq < 0) {
+			cookieData[val] = "";
+			return;
+		}
+		cookieData[val.slice(0, eq)] = decodeCookieValue(val.slice(eq + 1));
 	});
     return cookieData;
 }
@@ -20,29 +33,28 @@ function readCookie(key){
 }
 
 function updateCookie(cookieData){
-    var listCookie = [];
     for(let k in cookieData){
-         document.cookie = `${k}=${cookieData[k]}`;
+         document.cookie = `${encodeURIComponent(k)}=${encodeURIComponent(cookieData[k] == null ? "" : String(cookieData[k]))}; path=/; SameSite=Lax`;
     }
 }
 
 function addCookie(key,val){
-    var cookieData = cookieToObj();
-    cookieData[key] = val;
-    console.log(cookieData)
-    updateCookie(cookieData);
+    document.cookie = `${encodeURIComponent(key)}=${encodeURIComponent(val == null ? "" : String(val))}; path=/; SameSite=Lax`;
 }
 
 function deleteCookie(key){
-    var cookieData = cookieToObj();
-    cookieData[key] = '';
-	updateCookie(cookieData);
+    document.cookie = `${encodeURIComponent(key)}=; path=/; max-age=0; SameSite=Lax`;
+}
+
+function renderGreeting(username) {
+	const text = `${username || ""}~~您好`;
+	$(".user-greeting").text(text);
+	$("#name").text(text);
 }
 
 
 function loginCheck(userId,sessionKey){
-    var ret;
-    $.ajax({
+    return $.ajax({
         url: 'https://eucan.ddns.net:3000/session',
         type: 'POST',
         dataType: 'json',
@@ -54,12 +66,13 @@ function loginCheck(userId,sessionKey){
             cookie:sessionKey
         }),
     }).then(res=>{
-        // console.log("success")
+        if (res && res.name) {
+            addCookie("name", res.name);
+            renderGreeting(res.name);
+        }
     }).catch(rej=>{
         console.log(rej)
-        ret = null;
         alert("請重新登入");
         window.location = window.location.origin;
     });
-    return new Promise(res=>res(ret));
 }
