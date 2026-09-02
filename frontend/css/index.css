@@ -60,6 +60,29 @@ button {
     margin: 15px 0;
 }
 
+.password-field {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.password-field input {
+    margin-bottom: 0;
+}
+
+.pw-toggle {
+    width: auto;
+    height: 30px;
+    font-size: 13px;
+    padding: 0 10px;
+    background: transparent;
+    color: #fff;
+    border: 3px solid orange;
+    border-radius: 5px;
+    text-shadow: 0.05em 0.05em 0.15em black;
+}
+
 /* 文字顏色 */
 p {
     color: white;

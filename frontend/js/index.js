@@ -1,6 +1,6 @@
 
 $(function() {
-	$("#login").on("click",function(){
+	function login() {
 		var twoFAc = "";
 		if($("#code").val()=='root'){
 			twoFAc = prompt("請輸入2FA驗證碼");
@@ -19,7 +19,6 @@ $(function() {
 				twoFA:twoFAc
 			}),
 		}).then(res=>{
-			// console.log(res);
 			addCookie("session",res["sessionKey"]);
 			addCookie("id",$("#code").val());
 			addCookie("name", res["name"] || "");
@@ -27,5 +26,16 @@ $(function() {
 		}).catch(rej=>{
 			alert("帳號或密碼錯誤");
 		});
+	}
+
+	$("#loginForm").on("submit", function(e){
+		e.preventDefault();
+		login();
+	});
+
+	$("#togglePw").on("click", function(){
+		var isMasked = $("#pw").prop("type") === "password";
+		$("#pw").prop("type", isMasked ? "text" : "password");
+		$(this).text(isMasked ? "隱藏" : "顯示");
 	});
 });

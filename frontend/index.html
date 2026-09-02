@@ -15,15 +15,18 @@
 				<h1>
 					祐肯企業<br>請假系統
 				</h1>
-				<div class="inputs">
-					<input type = "text" id = "code" placeholder = "輸入編號" />
-				</div>
-				<div class="inputs">
-					<input type = "password" id = "pw" placeholder = "輸入密碼" />					
-				</div>
-				<div class="inputs">
-					<button class="glow-on-hover" id="login">登入</button>
-				</div>
+				<form id="loginForm">
+					<div class="inputs">
+						<input type = "text" id = "code" placeholder = "輸入編號" />
+					</div>
+					<div class="inputs password-field">
+						<input type = "password" id = "pw" placeholder = "輸入密碼" />
+						<button type="button" id="togglePw" class="pw-toggle">顯示</button>
+					</div>
+					<div class="inputs">
+						<button type="submit" class="glow-on-hover" id="login">登入</button>
+					</div>
+				</form>
 			</div>
 		</div>
 		<div class="version-info">
