@@ -96,7 +96,7 @@ app.get('/api/clockin/years', async (req: Request, res: Response) => {
   }
 });
 
-const posts: Array<string> = ['login', 'users', 'session', "register", 'dayoff', 'request', 'query', 'permit', 'init', 'approved', 'empquery', 'delete', "modify", "quota", "clockin", "sync", "calendar", "clrecord", "tmodify", "modemp"];
+const posts: Array<string> = ['login', 'users', 'session', "register", 'dayoff', 'request', 'query', 'permit', 'init', 'approved', 'empquery', 'delete', "modify", "quota", "clockin", "sync", "calendar", "clrecord", "tmodify", "modemp", "batchrequest"];
 posts.forEach(v => {
   const utils = require(`./system/${v}.js`).bind(null, sqlPlugin, log, mailers);
   app.post(`/${v}`, (req: Request, res: Response) => {
