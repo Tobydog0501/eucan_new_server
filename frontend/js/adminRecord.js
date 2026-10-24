@@ -195,7 +195,7 @@ $(function () {
                     <div class="record-card-row"><span>修改的管理員</span><span>${displayValue(record.editorName)}</span></div>
                     <div class="record-card-row"><span>修改時間</span><span>${displayValue(record.editedAt)}</span></div>`
                 : "";
-            const displayName = `${escapeHtml(record.name == null ? "" : record.name)}${record.onLeave === true ? "[*]" : ""}`;
+            const displayName = `${escapeHtml(record.name == null ? "" : record.name)}${record.onLeave === true ? "*" : ""}`;
             const clockinRow = missingTime(record.clockin) ? "record-card-row record-card-row-missing" : "record-card-row";
             const clockoutRow = missingTime(record.clockout) ? "record-card-row record-card-row-missing" : "record-card-row";
             html += `
