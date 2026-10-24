@@ -1,29 +1,52 @@
-header li{
-	margin: 0px 20px;
+header li {
+    margin: 0px 20px;
 }
 
 
-nav{
-	font-size: 20px;
+nav {
+    font-size: 20px;
 }
 
 
-header img{
-	width: 130px;
+header img {
+    width: 130px;
 }
 
 
-.main{
+.main {
     margin-top: 5px;
-    font-size: 25px;
+    font-size: 20px;
 }
 
 
-.input{
-    padding: 10px;
+.input {
+    padding: 4px;
 }
 
 
-.btn{
-    font-size: 30px;
+.btn {
+    font-size: 20px;
+}
+
+.search {
+    font-size: 13px;
+}
+
+thead th,
+thead td {
+    font-size: 15px;
+    text-align: left;
+    padding: 1px 10px 5px 0px;
+}
+
+tbody th {
+    font-size: 15px;
+    text-align: left;
+    padding: 1px 10px 1px 0px;
+}
+
+tbody td {
+    font-size: 15px;
+    text-align: right;
+    padding: 1px 1px 1px 0px;
 }
