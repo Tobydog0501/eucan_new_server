@@ -27,9 +27,15 @@ module.exports = function utils(sqlPlugin, log, mailer, req, res) {
             res.sendStatus(403);
             return;
         }
-        const data = yield sqlPlugin.clockinRecord(year, month);
-        yield (0, clockin_excel_1.output_excel)(data, year, month);
-        res.sendStatus(200);
+        try {
+            const data = yield sqlPlugin.clockinRecord(year, month);
+            yield (0, clockin_excel_1.output_excel)(data, year, month);
+            res.sendStatus(200);
+        }
+        catch (e) {
+            log.logFormat(`Failed to generate clockin record /app/clock/${year}-${month}clockin_record.xlsx: ${String(e)}`);
+            res.sendStatus(500);
+        }
         // res.sendFile(`/app/clock/${year}-${month}clockin_record.xlsx`, (err) => {
         //     if (err) {
         //         log.logFormat(`Error sending file /app/clock/${year}-${month}clockin_record.xlsx` + err);

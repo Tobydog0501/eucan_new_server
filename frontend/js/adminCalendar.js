@@ -119,6 +119,35 @@ $(function () {
         renderCalendar(data);
     }
 
+    async function writeArchive(year, month) {
+        try {
+            const resp = await fetch(`${apiBase}/calendar`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({
+                    account: userId,
+                    cookie: sessionKey,
+                    year: year,
+                    month: month,
+                }),
+            });
+            return resp.status === 200;
+        } catch (e) {
+            console.error(e);
+            return false;
+        }
+    }
+
+    async function reloadAndWriteArchive() {
+        const monthIndex = parseInt($("#month").val(), 10);
+        const yearIndex = parseInt($("#year").val(), 10);
+        const writePromise = writeArchive(yearIndex, monthIndex);
+        await updateCalendar();
+        const wrote = await writePromise;
+        alert(wrote ? "備查檔已寫入" : "備查檔寫入失敗");
+    }
+
     async function initializeCalendar() {
         const years = await fetchAvailableYears();
         populateYearOptions(years);
@@ -128,7 +157,7 @@ $(function () {
         await updateCalendar();
     }
 
-    $("#upData").on("click", updateCalendar);
+    $("#upData").on("click", reloadAndWriteArchive);
     $("#month, #year").on("change", updateCalendar);
     initializeCalendar();
 });

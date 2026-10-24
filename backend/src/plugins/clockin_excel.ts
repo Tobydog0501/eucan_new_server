@@ -25,14 +25,6 @@ export async function output_excel(data:clockinrecord[], year:digit, month:digit
   });
 
   // 5. Write the workbook to a file.
-  try {
-    await workbook.xlsx.writeFile(`/app/clock/${year}-${month}clockin_record.xlsx`);
-    console.log('Excel file created successfully!');
-  } catch (err) {
-    console.error('Error writing excel file:', err);
-  }
-  
-  return new Promise((res) => {
-    res();
-  });
+  await workbook.xlsx.writeFile(`/app/clock/${year}-${month}clockin_record.xlsx`);
+  console.log('Excel file created successfully!');
 }
