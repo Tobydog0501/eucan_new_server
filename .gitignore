@@ -14,3 +14,5 @@ backend/build
 backend/main.js
 frontend/logs
 nginx/logs
+backend/plugins
+nginx/acme

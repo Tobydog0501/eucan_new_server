@@ -14,6 +14,40 @@ $(function () {
     const fontSizes = [0.9, 1, 1.1, 1.2, 1.35];
     let fontSizeIndex = 1;
 
+    async function fetchAvailableYears() {
+        const url = `${apiBase}/api/clockin/years?account=${encodeURIComponent(userId)}&cookie=${encodeURIComponent(sessionKey)}`;
+        try {
+            const resp = await fetch(url, { method: "GET", credentials: "include" });
+            if (!resp.ok) {
+                console.warn("Failed to fetch clockin years", resp.status);
+                return [];
+            }
+            const data = await resp.json();
+            return Array.isArray(data?.years) ? data.years.map((year) => parseInt(year, 10)).filter((year) => !Number.isNaN(year)) : [];
+        } catch (error) {
+            console.error(error);
+            return [];
+        }
+    }
+
+    function populateYearOptions(years) {
+        const select = $("#year");
+        const uniqueYears = Array.from(new Set(years)).sort((a, b) => a - b);
+        const nowYear = new Date().getFullYear();
+        const fallbackYear = uniqueYears.includes(nowYear) ? nowYear : (uniqueYears[uniqueYears.length - 1] || nowYear);
+
+        select.empty();
+        uniqueYears.forEach((year) => {
+            select.append($("<option>").val(String(year)).text(`${year}年`));
+        });
+
+        if (uniqueYears.length === 0) {
+            select.append($("<option>").val(String(fallbackYear)).text(`${fallbackYear}年`));
+        }
+
+        select.val(String(fallbackYear));
+    }
+
     function applyFontSize() {
         document.documentElement.style.setProperty("--record-font-scale", String(fontSizes[fontSizeIndex]));
     }
@@ -92,14 +126,21 @@ $(function () {
         renderClockin(data);
     }
 
+    async function initializeClockin() {
+        const years = await fetchAvailableYears();
+        populateYearOptions(years);
+
+        const nowMonth = new Date().getMonth() + 1;
+        $("#month").val(String(nowMonth));
+
+        updateDayOptions();
+        const currentDay = String(new Date().getDate());
+        $("#day").val(currentDay);
+
+        updateClockin();
+    }
+
     const now = new Date();
-    const nowYear = now.getFullYear();
-    const nowMonth = now.getMonth() + 1;
-    const nowDay = now.getDate();
-    $("#year").val(String(nowYear));
-    $("#month").val(String(nowMonth));
-    updateDayOptions();
-    $("#day").val(String(nowDay));
 
     applyFontSize();
 
@@ -128,5 +169,5 @@ $(function () {
         updateClockin();
     });
     $("#day").on("change", updateClockin);
-    updateClockin();
+    initializeClockin();
 });
