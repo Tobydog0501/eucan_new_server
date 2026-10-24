@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import logger from './logger'
 import { getSplitTimestamp, fetch_all_nwd, getROCYearsInRange } from "./dayoff_calculate"
 import { userinfo, dayoffinfo, clockinrecord, requestquery, logininfo, digit, dayofftype, dayoffinfo_ret } from "../types/types";
+import { ClockEdit, ClockSheetRow, normalizeTime } from "./clockin_sheet";
 import { join } from "path";
 // const logger = require("./logger.js");
 const log: logger = new logger(`./logs/${new Date().toISOString().split('T')[0]}.log`);
@@ -15,6 +16,7 @@ export class sql {
     this.login_db = new Database('./databases/loginDatabase.db');
     this.login_db.pragma('journal_mode = WAL');
     this.ensureUserinfoLeaveDateColumn();
+    this.ensureClockinTables();
     log.logFormat("Database is connected with server.", new Date());
   }
 
@@ -24,6 +26,41 @@ export class sql {
     if (!hasLeaveDate) {
       this.login_db.prepare(`ALTER TABLE userinfo ADD COLUMN leaveDate DATETIME DEFAULT NULL;`).run();
     }
+  }
+
+  private ensureClockinTables(): void {
+    this.login_db.exec(`
+      CREATE TABLE IF NOT EXISTS clockin_edit (
+        id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        name TEXT NOT NULL,
+        clockin TEXT,
+        clockout TEXT,
+        reason TEXT NOT NULL,
+        editor_id TEXT NOT NULL,
+        editor_name TEXT NOT NULL,
+        edited_at TEXT NOT NULL,
+        PRIMARY KEY (id, date)
+      );
+      CREATE TABLE IF NOT EXISTS clockin_master (
+        year TEXT NOT NULL,
+        month TEXT NOT NULL,
+        generated_at TEXT NOT NULL,
+        PRIMARY KEY (year, month)
+      );
+      CREATE TABLE IF NOT EXISTS clockin_master_row (
+        year TEXT NOT NULL,
+        month TEXT NOT NULL,
+        date TEXT NOT NULL,
+        id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        clockin TEXT,
+        clockout TEXT,
+        modified INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        PRIMARY KEY (year, month, date, id)
+      );
+    `);
   }
 
   login(user: string, pwd: string | null, cookie: string | null): { msg: string, accountType?: string, sessionKey?: string, name?: string } {
@@ -736,7 +773,194 @@ export class sql {
     return;
   }
 
+  getUser(id: string): userinfo | null {
+    const row = this.login_db.prepare(`SELECT * FROM userinfo WHERE id = ?;`).get(id) as userinfo | undefined;
+    return row ? row : null;
+  }
+
+  clockinEditsForMonth(year: string | number, month: string | number): ClockEdit[] {
+    const parts = this.clockMonthParts(year, month);
+    const rows = this.login_db.prepare(
+      `SELECT id, date, name, clockin, clockout, reason, editor_id, editor_name, edited_at
+       FROM clockin_edit WHERE date LIKE ?;`
+    ).all(`${parts.year}-${parts.month}-%`) as ClockEditSqlRow[];
+    return rows.map((row) => this.toClockEdit(row));
+  }
+
+  clockinEditsForDate(date: string): ClockEdit[] {
+    const rows = this.login_db.prepare(
+      `SELECT id, date, name, clockin, clockout, reason, editor_id, editor_name, edited_at
+       FROM clockin_edit WHERE date = ?;`
+    ).all(date) as ClockEditSqlRow[];
+    return rows.map((row) => this.toClockEdit(row));
+  }
+
+  saveClockinEdit(input: {
+    id: string;
+    date: string;
+    name: string;
+    clockin: string | null;
+    clockout: string | null;
+    reason: string;
+    editorId: string;
+    editorName: string;
+  }): void {
+    this.login_db.prepare(
+      `INSERT INTO clockin_edit (id, date, name, clockin, clockout, reason, editor_id, editor_name, edited_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M', 'now', '+8 hours'))
+       ON CONFLICT(id, date) DO UPDATE SET
+         name = excluded.name,
+         clockin = excluded.clockin,
+         clockout = excluded.clockout,
+         reason = excluded.reason,
+         editor_id = excluded.editor_id,
+         editor_name = excluded.editor_name,
+         edited_at = strftime('%Y-%m-%d %H:%M', 'now', '+8 hours');`
+    ).run(
+      input.id,
+      input.date,
+      input.name,
+      normalizeTime(input.clockin),
+      normalizeTime(input.clockout),
+      input.reason,
+      input.editorId,
+      input.editorName
+    );
+  }
+
+  replaceClockinMaster(year: string | number, month: string | number, rows: ClockSheetRow[]): void {
+    const parts = this.clockMonthParts(year, month);
+    const remove = this.login_db.prepare(`DELETE FROM clockin_master_row WHERE year = ? AND month = ?;`);
+    const insert = this.login_db.prepare(
+      `INSERT INTO clockin_master_row (year, month, date, id, name, clockin, clockout, modified, reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`
+    );
+    const mark = this.login_db.prepare(
+      `INSERT INTO clockin_master (year, month, generated_at)
+       VALUES (?, ?, strftime('%Y-%m-%d %H:%M', 'now', '+8 hours'))
+       ON CONFLICT(year, month) DO UPDATE SET
+         generated_at = strftime('%Y-%m-%d %H:%M', 'now', '+8 hours');`
+    );
+    const writeRows = this.login_db.transaction(() => {
+      remove.run(parts.year, parts.month);
+      for (const row of rows) {
+        insert.run(
+          parts.year,
+          parts.month,
+          row.date,
+          row.id,
+          row.name,
+          row.clockin,
+          row.clockout,
+          row.modified ? 1 : 0,
+          row.modified ? row.reason : ''
+        );
+      }
+      mark.run(parts.year, parts.month);
+    });
+    writeRows();
+  }
+
+  clockinMasterReady(year: string | number, month: string | number): boolean {
+    const parts = this.clockMonthParts(year, month);
+    const row = this.login_db.prepare(`SELECT 1 AS ready FROM clockin_master WHERE year = ? AND month = ?;`).get(parts.year, parts.month);
+    return row != null;
+  }
+
+  clockinMasterRows(year: string | number, month: string | number, id?: string): ClockSheetRow[] {
+    const parts = this.clockMonthParts(year, month);
+    const rows = (id == null
+      ? this.login_db.prepare(
+        `SELECT date, id, name, clockin, clockout, modified, reason
+         FROM clockin_master_row WHERE year = ? AND month = ?;`
+      ).all(parts.year, parts.month)
+      : this.login_db.prepare(
+        `SELECT date, id, name, clockin, clockout, modified, reason
+         FROM clockin_master_row WHERE year = ? AND month = ? AND id = ?;`
+      ).all(parts.year, parts.month, id)) as ClockMasterSqlRow[];
+    const mapped = rows.map((row) => this.toClockSheetRow(row));
+    mapped.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id, 'zh-Hant', { numeric: true, sensitivity: 'base' }));
+    return mapped;
+  }
+
+  employeeIdsWithMonthActivity(year: string | number, month: string | number): string[] {
+    const parts = this.clockMonthParts(year, month);
+    const prefix = `${parts.year}-${parts.month}-%`;
+    const rows = this.login_db.prepare(
+      `SELECT id FROM clockinrecord WHERE date LIKE ?
+       UNION
+       SELECT id FROM clockin_edit WHERE date LIKE ?
+       UNION
+       SELECT id FROM clockin_master_row WHERE year = ? AND month = ?;`
+    ).all(prefix, prefix, parts.year, parts.month) as Array<{ id: string }>;
+    const ids: string[] = [];
+    for (const row of rows) {
+      if (row.id) {
+        ids.push(row.id);
+      }
+    }
+    return ids;
+  }
+
+  private clockMonthParts(year: string | number, month: string | number): { year: string; month: string } {
+    return {
+      year: String(year),
+      month: String(month).padStart(2, '0'),
+    };
+  }
+
+  private toClockEdit(row: ClockEditSqlRow): ClockEdit {
+    return {
+      id: row.id,
+      name: row.name || '',
+      date: row.date,
+      clockin: normalizeTime(row.clockin),
+      clockout: normalizeTime(row.clockout),
+      reason: row.reason || '',
+      editorId: row.editor_id,
+      editorName: row.editor_name,
+      editedAt: row.edited_at,
+    };
+  }
+
+  private toClockSheetRow(row: ClockMasterSqlRow): ClockSheetRow {
+    const modified = Number(row.modified) === 1;
+    return {
+      id: row.id,
+      name: row.name || '',
+      date: row.date,
+      clockin: normalizeTime(row.clockin),
+      clockout: normalizeTime(row.clockout),
+      modified,
+      reason: modified ? (row.reason || '') : '',
+      editorName: null,
+      editedAt: null,
+    };
+  }
+
 }
+
+type ClockEditSqlRow = {
+  id: string;
+  date: string;
+  name: string;
+  clockin: string | null;
+  clockout: string | null;
+  reason: string | null;
+  editor_id: string;
+  editor_name: string;
+  edited_at: string;
+};
+
+type ClockMasterSqlRow = {
+  date: string;
+  id: string;
+  name: string;
+  clockin: string | null;
+  clockout: string | null;
+  modified: number;
+  reason: string | null;
+};
 
 function calculate(startDate: Date, endDate: Date): { m: number, d: number } {
   if (!(startDate instanceof Date) || isNaN(startDate.getTime())) {

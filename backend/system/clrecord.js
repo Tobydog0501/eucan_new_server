@@ -10,7 +10,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const checkvalid_1 = require("../plugins/checkvalid");
-const clockin_excel_1 = require("../plugins/clockin_excel");
+const clockin_archive_1 = require("../plugins/clockin_archive");
 module.exports = function utils(sqlPlugin, log, mailer, req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         const dataReceived = req.body;
@@ -28,19 +28,13 @@ module.exports = function utils(sqlPlugin, log, mailer, req, res) {
             return;
         }
         try {
-            const data = yield sqlPlugin.clockinRecord(year, month);
-            yield (0, clockin_excel_1.output_excel)(data, year, month);
+            const pdfPath = yield (0, clockin_archive_1.writeClockinMaster)(sqlPlugin, year, month);
+            log.logFormat(`Generated clockin record ${pdfPath}`);
             res.sendStatus(200);
         }
         catch (e) {
-            log.logFormat(`Failed to generate clockin record /app/clock/${year}-${month}clockin_record.xlsx: ${String(e)}`);
+            log.logFormat(`Failed to generate clockin record ${process.cwd()}/clock/${year}-${month}clockin_record.pdf: ${String(e)}`);
             res.sendStatus(500);
         }
-        // res.sendFile(`/app/clock/${year}-${month}clockin_record.xlsx`, (err) => {
-        //     if (err) {
-        //         log.logFormat(`Error sending file /app/clock/${year}-${month}clockin_record.xlsx` + err);
-        //         res.sendStatus(500);
-        //     }
-        // });
     });
 };

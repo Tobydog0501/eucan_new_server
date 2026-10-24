@@ -3,7 +3,7 @@ import { valid } from "../plugins/checkvalid";
 import { mailer } from "../plugins/mailer";
 import logger from "../plugins/logger";
 import { sql } from "../plugins/sql";
-import {output_excel} from "../plugins/clockin_excel";
+import { writeClockinMaster } from "../plugins/clockin_archive";
 import { digit } from "../types/types";
 
 module.exports = async function utils(sqlPlugin:sql,log:logger,mailer:mailer,req:Request,res:Response):Promise<void>{
@@ -26,18 +26,11 @@ module.exports = async function utils(sqlPlugin:sql,log:logger,mailer:mailer,req
     }
 
     try {
-        const data = await sqlPlugin.clockinRecord(year,month);
-        await output_excel(data,year,month);
+        const pdfPath = await writeClockinMaster(sqlPlugin, year, month);
+        log.logFormat(`Generated clockin record ${pdfPath}`);
         res.sendStatus(200);
     } catch (e) {
-        log.logFormat(`Failed to generate clockin record /app/clock/${year}-${month}clockin_record.xlsx: ${String(e)}`);
+        log.logFormat(`Failed to generate clockin record ${process.cwd()}/clock/${year}-${month}clockin_record.pdf: ${String(e)}`);
         res.sendStatus(500);
     }
-    // res.sendFile(`/app/clock/${year}-${month}clockin_record.xlsx`, (err) => {
-    //     if (err) {
-    //         log.logFormat(`Error sending file /app/clock/${year}-${month}clockin_record.xlsx` + err);
-    //         res.sendStatus(500);
-    //     }
-    // });
-  
 }
