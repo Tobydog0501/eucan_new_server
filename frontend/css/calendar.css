@@ -294,6 +294,18 @@ header img {
 	flex: 1;
 }
 
+.record-card-row-missing {
+	background: #dc2626;
+	border-radius: 8px;
+	padding: 0.3rem 0.45rem;
+	margin-top: 0.25rem;
+}
+
+.record-card-row-missing span:first-child,
+.record-card-row-missing span:last-child {
+	color: #ffffff;
+}
+
 .record-missing {
 	margin-top: 0.5rem;
 	padding: 0.45rem 0.6rem;
