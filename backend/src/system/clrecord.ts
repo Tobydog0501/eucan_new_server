@@ -25,10 +25,14 @@ module.exports = async function utils(sqlPlugin:sql,log:logger,mailer:mailer,req
         return;
     }
 
-    const data = await sqlPlugin.clockinRecord(year,month);
-    await output_excel(data,year,month);
-    
-    res.sendStatus(200);
+    try {
+        const data = await sqlPlugin.clockinRecord(year,month);
+        await output_excel(data,year,month);
+        res.sendStatus(200);
+    } catch (e) {
+        log.logFormat(`Failed to generate clockin record /app/clock/${year}-${month}clockin_record.xlsx: ${String(e)}`);
+        res.sendStatus(500);
+    }
     // res.sendFile(`/app/clock/${year}-${month}clockin_record.xlsx`, (err) => {
     //     if (err) {
     //         log.logFormat(`Error sending file /app/clock/${year}-${month}clockin_record.xlsx` + err);

@@ -6,6 +6,7 @@ import logger from './plugins/logger';
 import { mailer } from './plugins/mailer';
 import { sqli_detect } from './plugins/anti_SQLI';
 import { check_working_day, main as generateCalendarExcel } from './plugins/dayoff_calendar';
+import { startArchiveSchedule } from './plugins/archive_schedule';
 import path from 'path';
 import fs from 'fs';
 
@@ -119,6 +120,7 @@ app.listen(PORT, () => {
   if (!mailerStatus) {
     console.error("Mailer Verify Failed!");
   }
+  startArchiveSchedule(sqlPlugin, log);
 });
 
 // Public view endpoint: return calendar JSON (weeks grid)
