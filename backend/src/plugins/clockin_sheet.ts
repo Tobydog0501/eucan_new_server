@@ -209,14 +209,18 @@ type PdfColumn = {
 
 export function renderClockinPdf(title: string, rows: ClockSheetRow[], fontPath: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 36, info: { Title: title } });
+    const doc = new PDFDocument({ size: 'A4', layout: 'portrait', margin: 36, info: { Title: title } });
     const chunks: Buffer[] = [];
     doc.on('data', (chunk: Buffer) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
     doc.font(fontPath);
-    doc.fontSize(16).text(title, { align: 'center' });
+    const titleWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    doc.fontSize(16).text(title, doc.page.margins.left, doc.page.margins.top, {
+      width: titleWidth,
+      align: 'center',
+    });
     doc.moveDown(0.6);
 
     const columns = pdfColumns(doc);
@@ -225,7 +229,7 @@ export function renderClockinPdf(title: string, rows: ClockSheetRow[], fontPath:
     rows.forEach((row) => {
       const height = rowHeight(doc, columns, row);
       if (y + height > doc.page.height - doc.page.margins.bottom) {
-        doc.addPage();
+        doc.addPage({ size: 'A4', layout: 'portrait', margin: 36 });
         y = doc.page.margins.top;
         y = drawHeader(doc, columns, y);
       }
@@ -266,23 +270,23 @@ function sheetKey(id: string, date: string): string {
 function pdfColumns(doc: PDFKit.PDFDocument): PdfColumn[] {
   const usable = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const fixed: PdfColumn[] = [
-    { title: '日期', width: 78, value: (row) => row.date },
-    { title: '員工編號', width: 72, value: (row) => row.id },
-    { title: '員工姓名', width: 80, value: (row) => row.name },
-    { title: '上班時間', width: 70, value: (row) => displayTime(row.clockin) },
-    { title: '下班時間', width: 70, value: (row) => displayTime(row.clockout) },
-    { title: '是否有被修改', width: 88, value: (row) => row.modified ? '是' : '否' },
+    { title: '日期', width: 70, value: (row) => row.date },
+    { title: '員工編號', width: 54, value: (row) => row.id },
+    { title: '員工姓名', width: 60, value: (row) => row.name },
+    { title: '上班時間', width: 48, value: (row) => displayTime(row.clockin) },
+    { title: '下班時間', width: 48, value: (row) => displayTime(row.clockout) },
+    { title: '修改紀錄', width: 52, value: (row) => row.modified ? '是' : '否' },
   ];
   const used = fixed.reduce((sum, column) => sum + column.width, 0);
   return fixed.concat({
     title: '修改原因',
-    width: Math.max(usable - used, 120),
+    width: Math.max(usable - used, 80),
     value: (row) => row.reason,
   });
 }
 
 function drawHeader(doc: PDFKit.PDFDocument, columns: PdfColumn[], y: number): number {
-  doc.fontSize(9);
+  doc.fontSize(8);
   const height = Math.max(22, rowHeight(doc, columns, null) );
   drawRow(doc, columns, null, y, height, '#e8eef5');
   return y + height;
@@ -300,12 +304,20 @@ function rowHeight(doc: PDFKit.PDFDocument, columns: PdfColumn[], row: ClockShee
 
 function drawRow(doc: PDFKit.PDFDocument, columns: PdfColumn[], row: ClockSheetRow | null, y: number, height: number, fill: string): void {
   let x = doc.page.margins.left;
-  doc.fontSize(9);
+  doc.fontSize(8);
   for (const column of columns) {
     doc.save();
     doc.rect(x, y, column.width, height).fillAndStroke(fill, '#cbd5e1');
     doc.fillColor('#0f172a');
-    doc.text(row ? column.value(row) : column.title, x + 4, y + 4, { width: column.width - 8, height: height - 6 });
+    const text = row ? column.value(row) : column.title;
+    const textWidth = column.width - 8;
+    const textHeight = doc.heightOfString(text || ' ', { width: textWidth });
+    const textY = row ? y + 4 : y + Math.max(3, (height - textHeight) / 2);
+    doc.text(text, x + 4, textY, {
+      width: textWidth,
+      height: Math.max(height - (textY - y) - 2, textHeight),
+      align: row ? 'left' : 'center',
+    });
     doc.restore();
     x += column.width;
   }

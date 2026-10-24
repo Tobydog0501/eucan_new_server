@@ -176,6 +176,7 @@ $(function () {
 
         const targetDate = formatDate(year, month, day);
         const masterReady = data.masterReady === true;
+        setMasterDownload(masterReady);
         const sortedRecords = data.records.slice().sort((a, b) => {
             const aId = String(a.id || "");
             const bId = String(b.id || "");
@@ -196,7 +197,7 @@ $(function () {
                     <div class="record-card-name">${escapeHtml(record.name == null ? "" : record.name)}</div>
                     <div class="record-card-row"><span>上班</span><span>${displayValue(record.clockin)}</span></div>
                     <div class="record-card-row"><span>下班</span><span>${displayValue(record.clockout)}</span></div>
-                    <div class="record-card-row"><span>是否有被修改</span><span>${modified ? "是" : "否"}</span></div>
+                    <div class="record-card-row"><span>修改紀錄</span><span>${modified ? "是" : "否"}</span></div>
                     ${modifiedRows}
                     ${statusText}
                     <div class="record-card-actions">
@@ -217,6 +218,7 @@ $(function () {
             return;
         }
 
+        setMasterDownload(data.masterReady === true);
         const name = data.employee.name == null ? "" : String(data.employee.name);
         const id = data.employee.id == null ? "" : String(data.employee.id);
         const days = data.days.slice().sort((a, b) => Number(a.day) - Number(b.day));
@@ -252,7 +254,7 @@ $(function () {
                             <th>日期</th>
                             <th>上班</th>
                             <th>下班</th>
-                            <th>是否有被修改</th>
+                            <th>修改紀錄</th>
                             <th>修改原因</th>
                             <th>修改的管理員</th>
                             <th>修改時間</th>
@@ -340,6 +342,51 @@ $(function () {
         alert(wrote ? "備查檔已寫入" : "備查檔寫入失敗");
         await loadDirectory();
         await renderCurrent();
+    }
+
+    function setMasterDownload(masterReady) {
+        const ready = masterReady === true;
+        const button = $("#downloadMaster");
+        button.prop("disabled", !ready);
+        if (ready) {
+            button.removeAttr("title");
+        } else {
+            button.attr("title", "請先重新載入，產生該月總表");
+        }
+    }
+
+    function masterFileName(year, month) {
+        return `${year}-${String(month).padStart(2, "0")}_打卡紀錄.pdf`;
+    }
+
+    async function downloadMaster() {
+        const button = $("#downloadMaster");
+        if (button.prop("disabled")) return;
+        const year = $("#year").val();
+        const month = $("#month").val();
+        const url = `${apiBase}/api/clockin/master?account=${encodeURIComponent(userId)}&cookie=${encodeURIComponent(sessionKey)}&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
+        button.prop("disabled", true);
+        try {
+            const resp = await fetch(url, { method: "GET", credentials: "include" });
+            if (!resp.ok) {
+                await alertDownloadError(resp);
+                return;
+            }
+            const blob = await resp.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = objectUrl;
+            link.download = masterFileName(year, month);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        } catch (error) {
+            console.error(error);
+            alert("下載失敗");
+        } finally {
+            button.prop("disabled", false);
+        }
     }
 
     function personalFileName(year, month, name) {
@@ -477,6 +524,7 @@ $(function () {
     }
 
     $("#upData").on("click", reloadClockin);
+    $("#downloadMaster").on("click", downloadMaster);
     $("#month, #year").on("change", onPeriodChange);
     $("#day").on("change", () => {
         if (!selectedEmployeeId()) renderCurrent();

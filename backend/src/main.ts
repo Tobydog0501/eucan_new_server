@@ -8,7 +8,7 @@ import { sqli_detect } from './plugins/anti_SQLI';
 import { check_working_day, main as generateCalendarExcel } from './plugins/dayoff_calendar';
 import { startArchiveSchedule } from './plugins/archive_schedule';
 import { aggregateDay, ClockEdit, decideEdit, isRealDate, taipeiToday } from './plugins/clockin_sheet';
-import { personalClockinPdf } from './plugins/clockin_archive';
+import { personalClockinPdf, readMasterClockinPdf } from './plugins/clockin_archive';
 import path from 'path';
 import fs from 'fs';
 
@@ -512,6 +512,38 @@ app.post('/api/clockin/edit', async (req: Request, res: Response) => {
   }
 });
 
+app.get('/api/clockin/master', async (req: Request, res: Response) => {
+  try {
+    const account = String(req.query.account || '');
+    const cookie = String(req.query.cookie || '');
+    const parsed = parseClockinYearMonth(req.query.year, req.query.month);
+    if (!account || !cookie || !parsed) {
+      res.sendStatus(400);
+      return;
+    }
+
+    const ret = sqlPlugin.checkHash(account, cookie);
+    if (ret == null || ret['accountType'] == 'employee') {
+      res.sendStatus(403);
+      return;
+    }
+
+    const result = readMasterClockinPdf(sqlPlugin, parsed.yearKey, parsed.monthKey);
+    if (result.kind === 'no-master') {
+      res.status(409).json({ message: '請先重新載入，產生該月總表' });
+      return;
+    }
+
+    res.status(200);
+    res.set('Content-Type', 'application/pdf');
+    res.set('Content-Disposition', clockinMasterDisposition(result.filename, parsed.yearKey, parsed.monthKey));
+    res.send(result.buffer);
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
+});
+
 app.get('/api/clockin/personal', async (req: Request, res: Response) => {
   try {
     const account = String(req.query.account || '');
@@ -661,6 +693,12 @@ function summarizeClockinDay(
     editorName: row ? row.editorName : null,
     editedAt: row ? row.editedAt : null,
   };
+}
+
+function clockinMasterDisposition(filename: string, yearKey: string, monthKey: string): string {
+  const ascii = `${yearKey}-${monthKey}_clockin.pdf`;
+  const encoded = encodeURIComponent(filename).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
 function clockinAttachmentDisposition(filename: string, yearKey: string, monthKey: string, id: string): string {
