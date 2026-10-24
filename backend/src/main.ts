@@ -7,6 +7,7 @@ import { mailer } from './plugins/mailer';
 import { sqli_detect } from './plugins/anti_SQLI';
 import { check_working_day, main as generateCalendarExcel } from './plugins/dayoff_calendar';
 import path from 'path';
+import fs from 'fs';
 
 const log = new logger(`./logs/${new Date().toISOString().split('T')[0]}.log`);
 const sqlPlugin: sql = new sql();
@@ -29,6 +30,69 @@ app.use(cors({
 
 app.all('/', (req: Request, res: Response) => {
   res.send("System online.");
+});
+
+app.get('/api/calendar/years', (req: Request, res: Response) => {
+  try {
+    const account = String(req.query.account || '');
+    const cookie = String(req.query.cookie || '');
+
+    if (!account || !cookie) {
+      res.sendStatus(400);
+      return;
+    }
+
+    const ret = sqlPlugin.checkHash(account, cookie);
+    if (ret == null) {
+      res.sendStatus(403);
+      return;
+    }
+
+    const years = new Set<number>();
+    const calendarDir = './api';
+    if (fs.existsSync(calendarDir)) {
+      for (const fileName of fs.readdirSync(calendarDir)) {
+        const match = fileName.match(/^office_calendar_(\d{2,3})\.json$/);
+        if (!match) {
+          continue;
+        }
+        years.add(parseInt(match[1], 10) + 1911);
+      }
+    }
+
+    if (years.size === 0) {
+      years.add(new Date().getFullYear());
+    }
+
+    res.json({ years: Array.from(years).sort((a, b) => a - b) });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
+});
+
+app.get('/api/clockin/years', async (req: Request, res: Response) => {
+  try {
+    const account = String(req.query.account || '');
+    const cookie = String(req.query.cookie || '');
+
+    if (!account || !cookie) {
+      res.sendStatus(400);
+      return;
+    }
+
+    const ret = sqlPlugin.checkHash(account, cookie);
+    if (ret == null || ret['accountType'] == 'employee') {
+      res.sendStatus(403);
+      return;
+    }
+
+    const years = sqlPlugin.clockinYears();
+    res.json({ years: years.length > 0 ? years : [new Date().getFullYear()] });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
 });
 
 const posts: Array<string> = ['login', 'users', 'session', "register", 'dayoff', 'request', 'query', 'permit', 'init', 'approved', 'empquery', 'delete', "modify", "quota", "clockin", "sync", "calendar", "clrecord", "tmodify", "modemp"];

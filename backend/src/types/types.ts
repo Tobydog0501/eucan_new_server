@@ -15,7 +15,7 @@ export interface userinfo extends table {
   mgroup: number,
   permit: number,
   status: number,
-  leaveTime: string | null
+  leaveDate: string | null
 }
 
 export interface logininfo extends table {

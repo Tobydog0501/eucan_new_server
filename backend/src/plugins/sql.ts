@@ -14,7 +14,16 @@ export class sql {
   public constructor() {
     this.login_db = new Database('./databases/loginDatabase.db');
     this.login_db.pragma('journal_mode = WAL');
+    this.ensureUserinfoLeaveDateColumn();
     log.logFormat("Database is connected with server.", new Date());
+  }
+
+  private ensureUserinfoLeaveDateColumn(): void {
+    const columns = this.login_db.prepare(`PRAGMA table_info(userinfo);`).all() as Array<{ name: string }>;
+    const hasLeaveDate = columns.some((column) => column.name === 'leaveDate');
+    if (!hasLeaveDate) {
+      this.login_db.prepare(`ALTER TABLE userinfo ADD COLUMN leaveDate DATETIME DEFAULT NULL;`).run();
+    }
   }
 
   login(user: string, pwd: string | null, cookie: string | null): { msg: string, accountType?: string, sessionKey?: string, name?: string } {
@@ -583,6 +592,13 @@ export class sql {
     return new Promise(res => { res(query) });
   }
 
+  clockinYears(): number[] {
+    const rows = this.login_db.prepare(`SELECT DISTINCT substr(date, 1, 4) AS year FROM clockinrecord ORDER BY year;`).all() as Array<{ year: string }>;
+    return rows
+      .map((row) => parseInt(row.year, 10))
+      .filter((year) => !Number.isNaN(year));
+  }
+
   syncTickets(user: string, year: digit): void {
     const tickets = (this.login_db.prepare(`SELECT * FROM requestquery WHERE id= ? AND year= ? AND state=1;`).all(user, year) as requestquery[] | []);
     const ny: number = parseInt(`${year}`) + 1;
@@ -681,6 +697,13 @@ export class sql {
     return;
   }
 
+  resyncEmployeeDayoff(user: string): void {
+    const years = this.login_db.prepare(`SELECT DISTINCT year FROM dayoffinfo WHERE id= ? UNION SELECT DISTINCT year FROM requestquery WHERE id= ?;`).all(user, user) as Array<{ year: string }>;
+    years.forEach((yearInfo) => {
+      this.syncTickets(user, yearInfo.year);
+    });
+  }
+
   modifyTicket(num: string, action: number, type: string, start: string, end: string, totalTime: number, state: digit, reason: string): number | null {
     const ticket = (this.login_db.prepare(`SELECT * FROM requestquery WHERE serialnum= ?;`).get(num) as requestquery);
     const user = ticket["id"];
@@ -708,8 +731,8 @@ export class sql {
     return 0;
   }
 
-  modifyEmployeeInfo(user: string, name: string, status: digit, leaveDate: string | null): void {
-    this.login_db.prepare(`UPDATE userinfo SET name= ?,status= ?,leaveDate= ? WHERE id= ?;`).run(name, status, leaveDate, user);
+  modifyEmployeeInfo(user: string, pwd: string, type: string, email: string, name: string, joinTime: string, mgroup: digit, permit: digit, status: digit, leaveDate: string | null): void {
+    this.login_db.prepare(`UPDATE userinfo SET pwd= ?,type= ?,email= ?,name= ?,joinTime= ?,mgroup= ?,permit= ?,status= ?,leaveDate= ? WHERE id= ?;`).run(pwd, type, email, name, joinTime, mgroup, permit, status, leaveDate, user);
     return;
   }
 
