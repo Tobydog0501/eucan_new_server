@@ -63,6 +63,7 @@ module.exports = function utils(sqlPlugin: sql, log: logger, mailer: mailer, req
       res.sendStatus(400);
       return;
     }
+    leaveDate = leaveDate.slice(0, 10);
   } else {
     leaveDate = null;
   }
@@ -89,7 +90,7 @@ function isValidJoinDate(dateString: string): boolean {
 }
 
 function isValidLeaveDate(dateString: string): boolean {
-  const regex = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01]) ([01]\d|2[0-3]):([0-5]\d)$/;
+  const regex = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])(?: ([01]\d|2[0-3]):([0-5]\d))?$/;
   const match = dateString.match(regex);
 
   if (!match) return false;
@@ -97,18 +98,10 @@ function isValidLeaveDate(dateString: string): boolean {
   const year = parseInt(match[1], 10);
   const month = parseInt(match[2], 10);
   const day = parseInt(match[3], 10);
-  const hour = parseInt(match[4], 10);
-  const minute = parseInt(match[5], 10);
 
-  const date = new Date(year, month - 1, day, hour, minute);
+  const date = new Date(year, month - 1, day);
   date.setFullYear(year);
 
-  return (
-    date.getFullYear() === year &&
-    date.getMonth() === month - 1 &&
-    date.getDate() === day &&
-    date.getHours() === hour &&
-    date.getMinutes() === minute
-  );
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 }
 
