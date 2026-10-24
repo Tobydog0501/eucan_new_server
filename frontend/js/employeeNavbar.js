@@ -1,11 +1,33 @@
+function ensureNavbarStyles() {
+    if (document.getElementById("eucan-navbar-css")) {
+        return;
+    }
+    const link = document.createElement("link");
+    link.id = "eucan-navbar-css";
+    link.rel = "stylesheet";
+    link.href = "../css/navbar.css";
+    document.head.appendChild(link);
+}
+
+ensureNavbarStyles();
+
+function navPageName(href) {
+    if (!href || href === "#") {
+        return "";
+    }
+    return href.split("/").pop().split("?")[0] || "";
+}
+
 function highlightActiveLink() {
-    const currentPage = window.location.pathname.split("/").pop();
+    const currentPage = window.location.pathname.split("/").pop() || "";
 
     document.querySelectorAll(".navbar-nav .nav-link").forEach((link) => {
-        if (link.getAttribute("href") === currentPage) {
-            link.classList.add("active");
+        const isActive = navPageName(link.getAttribute("href")) === currentPage;
+        link.classList.toggle("active", isActive);
+        if (isActive) {
+            link.setAttribute("aria-current", "page");
         } else {
-            link.classList.remove("active");
+            link.removeAttribute("aria-current");
         }
     });
 }
