@@ -2,46 +2,140 @@ nav {
     font-size: 20px;
 }
 
-
 header img {
     width: 130px;
 }
 
-
-.main {
-    margin-top: 5px;
-    font-size: 20px;
+body {
+    background: linear-gradient(180deg, #f2f8ff 0%, #eaf3ff 100%);
+    min-height: 100vh;
 }
 
-
-.input {
-    padding: 4px;
+.leave-page {
+    padding: 1rem 1rem 3rem;
 }
 
-
-.btn {
-    font-size: 20px;
-}
-
-.search {
-    font-size: 13px;
-}
-
-thead th,
-thead td {
-    font-size: 15px;
+.leave-card {
+    max-width: 32rem;
+    margin: 0 auto;
+    background: #ffffff;
+    border-radius: 0.75rem;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    padding: 1.5rem 1.25rem 1.75rem;
     text-align: left;
-    padding: 1px 10px 5px 0px;
 }
 
-tbody th {
-    font-size: 15px;
-    text-align: left;
-    padding: 1px 10px 1px 0px;
+.leave-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0 0 1.25rem;
+    text-align: center;
 }
 
-tbody td {
-    font-size: 15px;
-    text-align: right;
-    padding: 1px 1px 1px 0px;
+.leave-section-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #1e3a5f;
+    margin: 0 0 0.75rem;
+}
+
+.leave-year-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.85rem;
+}
+
+.leave-year-row select,
+.leave-field select,
+.leave-field input[type="text"],
+.leave-datetime input {
+    height: 38px;
+    padding: 0 0.6rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.375rem;
+    background: #ffffff;
+}
+
+.leave-year-row select {
+    flex: 1;
+    min-width: 0;
+}
+
+.leave-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.leave-stat {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    padding: 0.75rem 0.85rem;
+}
+
+.leave-stat-label {
+    font-size: 0.85rem;
+    color: #64748b;
+    margin-bottom: 0.25rem;
+}
+
+.leave-stat-value {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #0f172a;
+    min-height: 1.5em;
+}
+
+.leave-divider {
+    margin: 1.35rem 0;
+    border: 0;
+    border-top: 1px solid #e2e8f0;
+}
+
+.leave-field {
+    margin-bottom: 0.9rem;
+}
+
+.leave-field label {
+    display: block;
+    font-weight: 600;
+    color: #334155;
+    margin-bottom: 0.35rem;
+}
+
+.leave-field select,
+.leave-field input[type="text"] {
+    width: 100%;
+}
+
+.leave-datetime {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+}
+
+.leave-datetime input {
+    width: 100%;
+    min-width: 0;
+    padding: 0 0.45rem;
+}
+
+.leave-submit {
+    width: 100%;
+    font-weight: 700;
+    margin-top: 0.35rem;
+}
+
+@media (max-width: 575.98px) {
+    .leave-datetime {
+        grid-template-columns: 1fr;
+    }
+
+    .leave-stats {
+        grid-template-columns: 1fr;
+    }
 }
