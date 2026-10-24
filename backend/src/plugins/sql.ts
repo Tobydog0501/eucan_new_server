@@ -229,6 +229,11 @@ export class sql {
     const lastLogin = Date.parse(loginHashData["createTime"]);
     const DateLastLogin = new Date(lastLogin);
 
+    if (sqldata["status"] == 0) {
+      log.logFormat(`${user} tried to log in but the account is marked as resigned.`, current);
+      return null
+    }
+
     if (((current.getTime() - DateLastLogin.getTime()) / 1000 / 60 / 60) <= 1) {    // Caculating the elapsed time
       // if elapsed time <= 1 hr
       if (loginHashData["sKey"] == cookie) {
@@ -703,8 +708,8 @@ export class sql {
     return 0;
   }
 
-  modifyEmployeeStatus(user: string, status: digit): void {
-    this.login_db.prepare(`UPDATE userinfo SET status= ? WHERE id= ?;`).run(status, user);
+  modifyEmployeeInfo(user: string, name: string, status: digit, leaveDate: string | null): void {
+    this.login_db.prepare(`UPDATE userinfo SET name= ?,status= ?,leaveDate= ? WHERE id= ?;`).run(name, status, leaveDate, user);
     return;
   }
 
