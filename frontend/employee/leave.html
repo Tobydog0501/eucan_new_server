@@ -18,93 +18,80 @@
 
 	<div id="navbar-container"></div>
 
-	<section>
-		<div class="container">
-			<div class="row align-items-start">
-				<div class="col text-center">
-					<div class="main">
-						<h2>請假</h2>
-						<div id="info" class="d-flex justify-content-center">
-							<table>
-								<thead>
-									<tr>
-										<th>特休假查詢 : </th>
-										<td>
-											<select>
-												<option>當年度</option>
-												<option>下年度</option>
-											</select>
+	<main class="leave-page">
+		<div class="leave-card">
+			<h1 class="leave-title">請假</h1>
 
-										</td>
-										<td>
-											<button id="search" class="search">查詢</button>
-										</td>
-									</tr>
-								</thead>
-								<tbody>
-									<tr>
-										<th><span id="quota-text">當年度</span>特休假總時數 : </th>
-										<td colspan="2">
-											<p id="quota">3(hr)</p>
-										</td>
-									</tr>
-									<tr>
-										<th><span id="annual-text">當年度</span>特休假已休時數 : </th>
-										<td colspan="2">
-											<p id="annual">0(hr)</p>
-										</td>
-									</tr>
-								</tbody>
-							</table>
-						</div>
-						<!-- <form action="https://eucan.ddns.net:3000/request" method="post" enctype="multipart/form-data"> -->
-						<div id="dayofftypeD" class="input">
-							<select id="type">
-								<option>選擇假別</option>
-								<option>特休假</option>
-								<option>事假</option>
-								<option>病假</option>
-								<option>婚假</option>
-								<option>喪假</option>
-								<option>家庭照顧假</option>
-								<option>分娩假</option>
-								<option>產檢假</option>
-								<option>流產假</option>
-								<option>陪產假</option>
-								<option>產假</option>
-								<option>公假</option>
-								<option>停班停課</option>
-							</select>
-						</div>
-
-						<div id="startD" class="input">
-							<p>開始時間</p>
-							<input id="start_day" type="date" min="2024-01-01" max="5000-12-31" />
-							<input id="start_time" type="time" />
-						</div>
-
-						<div id="endD" class="input">
-							<p>結束時間</p>
-							<input id="end_day" type="date" min="2024-01-01" max="5000-12-31" />
-							<input id="end_time" type="time" />
-						</div>
-						<br>
-						<div id="reasonD" class="input">
-							<input type="text" placeholder="事由" id="reason" />
-						</div>
-
-						<!-- <p>
-									總請假時數: 0 小時
-							</p> -->
-						<!-- <input name = "file" type = "file"> -->
-						<br>
-						<button type="submit" id="submit" class="input btn btn-secondary">送出申請</button>
-						<!-- </form> -->
+			<section id="info">
+				<h2 class="leave-section-title">特休假</h2>
+				<div class="leave-year-row">
+					<select>
+						<option>當年度</option>
+						<option>下年度</option>
+					</select>
+					<button type="button" id="search" class="btn btn-primary">查詢</button>
+				</div>
+				<div class="leave-stats">
+					<div class="leave-stat">
+						<div class="leave-stat-label"><span id="quota-text"></span>特休假總時數</div>
+						<p id="quota" class="leave-stat-value"></p>
+					</div>
+					<div class="leave-stat">
+						<div class="leave-stat-label"><span id="annual-text"></span>特休假已休時數</div>
+						<p id="annual" class="leave-stat-value"></p>
 					</div>
 				</div>
-			</div>
+			</section>
+
+			<hr class="leave-divider">
+
+			<section>
+				<h2 class="leave-section-title">送出假單</h2>
+				<div id="dayofftypeD" class="leave-field">
+					<label for="type">假別</label>
+					<select id="type">
+						<option>選擇假別</option>
+						<option>特休假</option>
+						<option>事假</option>
+						<option>病假</option>
+						<option>婚假</option>
+						<option>喪假</option>
+						<option>家庭照顧假</option>
+						<option>分娩假</option>
+						<option>產檢假</option>
+						<option>流產假</option>
+						<option>陪產假</option>
+						<option>產假</option>
+						<option>公假</option>
+						<option>停班停課</option>
+					</select>
+				</div>
+
+				<div id="startD" class="leave-field">
+					<label for="start_day">開始時間</label>
+					<div class="leave-datetime">
+						<input id="start_day" type="date" min="2024-01-01" max="5000-12-31" />
+						<input id="start_time" type="time" />
+					</div>
+				</div>
+
+				<div id="endD" class="leave-field">
+					<label for="end_day">結束時間</label>
+					<div class="leave-datetime">
+						<input id="end_day" type="date" min="2024-01-01" max="5000-12-31" />
+						<input id="end_time" type="time" />
+					</div>
+				</div>
+
+				<div id="reasonD" class="leave-field">
+					<label for="reason">事由</label>
+					<input type="text" placeholder="事由" id="reason" />
+				</div>
+
+				<button type="button" id="submit" class="btn btn-primary leave-submit">送出申請</button>
+			</section>
 		</div>
-	</section>
+	</main>
 
 	<script src="../js/jquery-3.7.1.min.js"></script>
 	<script src="../js/cookieOperation.js"></script>
