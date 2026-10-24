@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+
+<head>
+    <title>祐肯請假系統</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="../../img/logo.ico" type="image/x-icon">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="../css/adminBatchLeave.css">
+</head>
+
+<body>
+    <div id="navbar-container"></div>
+
+    <main class="container my-4">
+        <h1 class="mb-2">批次請假</h1>
+        <p class="text-muted">勾選在職員工，以同一段起迄時間一次建立假單。送出後直接通過，不必再審核。</p>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <form id="batchForm" class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label" for="type">假別</label>
+                        <select id="type" class="form-select" required>
+                            <option>特休假</option>
+                            <option>事假</option>
+                            <option>病假</option>
+                            <option>婚假</option>
+                            <option>喪假</option>
+                            <option>家庭照顧假</option>
+                            <option>分娩假</option>
+                            <option>產檢假</option>
+                            <option>流產假</option>
+                            <option>陪產假</option>
+                            <option>產假</option>
+                            <option>公假</option>
+                            <option selected>停班停課</option>
+                            <option>其他</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label" for="reason">事由</label>
+                        <input id="reason" class="form-control" type="text" placeholder="例如：颱風天停班停課" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label" for="start_day">開始日期</label>
+                        <input id="start_day" class="form-control" type="date" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label" for="start_time">開始時間</label>
+                        <input id="start_time" class="form-control" type="time" step="1800" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label" for="end_day">結束日期</label>
+                        <input id="end_day" class="form-control" type="date" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label" for="end_time">結束時間</label>
+                        <input id="end_time" class="form-control" type="time" step="1800" required>
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" id="submit" class="btn btn-primary">送出批次請假</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+            <input id="search" class="form-control" style="max-width: 16rem;" type="search" placeholder="搜尋姓名或員工編號">
+            <button type="button" id="selectVisible" class="btn btn-outline-primary">全選目前名單</button>
+            <button type="button" id="clearSelect" class="btn btn-outline-secondary">清除勾選</button>
+            <span id="selectedCount" class="text-muted">已選 0 人</span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th></th>
+                        <th>員工編號</th>
+                        <th>姓名</th>
+                    </tr>
+                </thead>
+                <tbody id="table"></tbody>
+            </table>
+        </div>
+
+        <section id="result" class="mt-4" hidden>
+            <h2 class="h4">送出結果</h2>
+            <div id="resultBody"></div>
+        </section>
+    </main>
+
+    <script src="../js/jquery-3.7.1.min.js"></script>
+    <script src="../js/cookieOperation.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="../js/adminBatchLeave.js"></script>
+</body>
+
+</html>
