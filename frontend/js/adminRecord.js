@@ -86,6 +86,10 @@ $(function () {
         return escapeHtml(value);
     }
 
+    function missingTime(value) {
+        return value == null || String(value).trim() === "";
+    }
+
     function formatDate(year, month, day) {
         return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     }
@@ -191,15 +195,16 @@ $(function () {
                     <div class="record-card-row"><span>修改的管理員</span><span>${displayValue(record.editorName)}</span></div>
                     <div class="record-card-row"><span>修改時間</span><span>${displayValue(record.editedAt)}</span></div>`
                 : "";
-            const statusText = record.hasRecord ? "" : '<div class="record-missing">這個人沒有打卡</div>';
+            const displayName = `${escapeHtml(record.name == null ? "" : record.name)}${record.onLeave === true ? "*" : ""}`;
+            const clockinRow = missingTime(record.clockin) ? "record-card-row record-card-row-missing" : "record-card-row";
+            const clockoutRow = missingTime(record.clockout) ? "record-card-row record-card-row-missing" : "record-card-row";
             html += `
                 <div class="record-card">
-                    <div class="record-card-name">${escapeHtml(record.name == null ? "" : record.name)}</div>
-                    <div class="record-card-row"><span>上班</span><span>${displayValue(record.clockin)}</span></div>
-                    <div class="record-card-row"><span>下班</span><span>${displayValue(record.clockout)}</span></div>
+                    <div class="record-card-name">${displayName}</div>
+                    <div class="${clockinRow}"><span>上班</span><span>${displayValue(record.clockin)}</span></div>
+                    <div class="${clockoutRow}"><span>下班</span><span>${displayValue(record.clockout)}</span></div>
                     <div class="record-card-row"><span>修改紀錄</span><span>${modified ? "是" : "否"}</span></div>
                     ${modifiedRows}
-                    ${statusText}
                     <div class="record-card-actions">
                         ${editButton(record.id, record.name, targetDate, record.clockin, record.clockout)}
                         ${downloadButton(record.id, record.name, record.downloadable, masterReady)}

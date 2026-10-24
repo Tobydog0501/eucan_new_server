@@ -902,6 +902,23 @@ export class sql {
     return ids;
   }
 
+  approvedLeaveIdsOnDate(date: string): string[] {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return [];
+    }
+    const rows = this.login_db.prepare(
+      `SELECT DISTINCT id FROM requestquery
+       WHERE state = 1 AND date(start) <= ? AND date(end) >= ?;`
+    ).all(date, date) as Array<{ id: string }>;
+    const ids: string[] = [];
+    for (const row of rows) {
+      if (row.id) {
+        ids.push(row.id);
+      }
+    }
+    return ids;
+  }
+
   private clockMonthParts(year: string | number, month: string | number): { year: string; month: string } {
     return {
       year: String(year),
