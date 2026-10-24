@@ -1,5 +1,5 @@
 import { main as generateCalendarExcel } from './dayoff_calendar';
-import { output_excel } from './clockin_excel';
+import { writeClockinMaster } from './clockin_archive';
 import { sql } from './sql';
 import logger from './logger';
 
@@ -70,11 +70,10 @@ async function writeTodayArchives(sqlPlugin: sql, log: logger): Promise<void> {
 
   const paddedMonth = month.toString().padStart(2, '0');
   try {
-    const data = await sqlPlugin.clockinRecord(year, paddedMonth);
-    await output_excel(data, year, paddedMonth);
-    log.logFormat(`Daily archive generated /app/clock/${year}-${paddedMonth}clockin_record.xlsx`);
+    const pdfPath = await writeClockinMaster(sqlPlugin, year, paddedMonth);
+    log.logFormat(`Daily archive generated ${pdfPath}`);
   } catch (e) {
-    log.logFormat(`Failed to generate daily clockin record /app/clock/${year}-${paddedMonth}clockin_record.xlsx: ${String(e)}`);
+    log.logFormat(`Failed to generate daily clockin record ${process.cwd()}/clock/${year}-${paddedMonth}clockin_record.pdf: ${String(e)}`);
   }
 }
 

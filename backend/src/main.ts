@@ -7,6 +7,8 @@ import { mailer } from './plugins/mailer';
 import { sqli_detect } from './plugins/anti_SQLI';
 import { check_working_day, main as generateCalendarExcel } from './plugins/dayoff_calendar';
 import { startArchiveSchedule } from './plugins/archive_schedule';
+import { aggregateDay, ClockEdit, decideEdit, isRealDate, taipeiToday } from './plugins/clockin_sheet';
+import { personalClockinPdf } from './plugins/clockin_archive';
 import path from 'path';
 import fs from 'fs';
 
@@ -216,10 +218,10 @@ app.get('/api/clockin/view', async (req: Request, res: Response) => {
   try {
     const account = String(req.query.account || '');
     const cookie = String(req.query.cookie || '');
-    const year = parseInt(String(req.query.year || '0'));
-    const month = parseInt(String(req.query.month || '0'));
+    const parsed = parseClockinYearMonth(req.query.year, req.query.month);
+    const day = parseInt(String(req.query.day || ''), 10);
 
-    if (!account || !cookie || !year || !month) {
+    if (!account || !cookie || !parsed || !Number.isInteger(day)) {
       res.sendStatus(400);
       return;
     }
@@ -230,27 +232,48 @@ app.get('/api/clockin/view', async (req: Request, res: Response) => {
       return;
     }
 
-    const monthKey = month.toString().padStart(2, '0');
-    const records = await sqlPlugin.clockinRecord(year, monthKey);
+    const { year, month, yearKey, monthKey } = parsed;
     const totalDays = new Date(year, month, 0).getDate();
-    const days: Array<{ day: number, records: Array<{ id: string, name: string, date: string, clockin: string | null, clockout: string | null }> }> = [];
-
-    for (let day = 1; day <= totalDays; day++) {
-      const dayKey = `${year}-${monthKey}-${day.toString().padStart(2, '0')}`;
-      const dayRecords = records.filter((item) => item.date === dayKey);
-      days.push({
-        day,
-        records: dayRecords.map((item) => ({
-          id: item.id,
-          name: item.name,
-          date: item.date,
-          clockin: item.clockin,
-          clockout: item.clockout,
-        }))
-      });
+    if (day < 1 || day > totalDays) {
+      res.sendStatus(400);
+      return;
     }
 
-    res.json({ year, month, days });
+    const date = `${yearKey}-${monthKey}-${day.toString().padStart(2, '0')}`;
+    const users = sqlPlugin.getAllUsers().filter((user) =>
+      user.id !== 'monitor' &&
+      user.status === 1 &&
+      user.type === 'employee' &&
+      (user.name || '').trim().length > 0
+    );
+    users.sort((a, b) => compareEmployeeId(a.id, b.id));
+    const monthRecords = await sqlPlugin.clockinRecord(yearKey, monthKey);
+    const punches = indexPunches(monthRecords);
+    const edits = indexEdits(sqlPlugin.clockinEditsForMonth(yearKey, monthKey));
+    const downloadableIds = new Set(sqlPlugin.clockinMasterRows(yearKey, monthKey).map((row) => row.id));
+    const records = users.map((user) => {
+      const live = summarizeClockinDay(punches.get(clockinKey(user.id, date)) || [], edits.get(clockinKey(user.id, date)) || null, user.name);
+      return {
+        id: user.id,
+        name: user.name,
+        clockin: live.clockin,
+        clockout: live.clockout,
+        hasRecord: live.hasRecord,
+        downloadable: downloadableIds.has(user.id),
+        modified: live.modified,
+        reason: live.reason,
+        editorName: live.editorName,
+        editedAt: live.editedAt,
+      };
+    });
+
+    res.json({
+      year,
+      month,
+      day,
+      masterReady: sqlPlugin.clockinMasterReady(yearKey, monthKey),
+      records,
+    });
   } catch (e) {
     log.logFormat((e as string), new Date());
     res.sendStatus(500);
@@ -284,48 +307,242 @@ app.get('/api/clockin/day', async (req: Request, res: Response) => {
       user.id !== 'monitor' &&
       user.status === 1 &&
       user.type === 'employee' &&
-      user.name.trim().length > 0
+      (user.name || '').trim().length > 0
     );
-    const records = await sqlPlugin.clockinRecord(year, monthKey);
-    const dayRecords = records.filter((item) => item.date === targetDate);
-
-    const mergedRecords = new Map<string, { id: string, name: string, clockin: string | null, clockout: string | null, hasRecord: boolean }>();
-
-    for (const user of users) {
-      mergedRecords.set(user.id, {
+    const recordsForMonth = await sqlPlugin.clockinRecord(year, monthKey);
+    const punches = indexPunches(recordsForMonth);
+    const edits = indexEdits(sqlPlugin.clockinEditsForDate(targetDate));
+    const data = users.map((user) => {
+      const live = summarizeClockinDay(punches.get(clockinKey(user.id, targetDate)) || [], edits.get(clockinKey(user.id, targetDate)) || null, user.name);
+      return {
         id: user.id,
         name: user.name,
-        clockin: null,
-        clockout: null,
-        hasRecord: false,
+        clockin: live.clockin,
+        clockout: live.clockout,
+        hasRecord: live.hasRecord,
+        modified: live.modified,
+        reason: live.reason,
+        editorName: live.editorName,
+        editedAt: live.editedAt,
+      };
+    });
+    data.sort((a, b) => compareEmployeeId(a.id, b.id));
+
+    res.json({ year, month, day, records: data });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
+});
+
+app.get('/api/clockin/directory', async (req: Request, res: Response) => {
+  try {
+    const account = String(req.query.account || '');
+    const cookie = String(req.query.cookie || '');
+    const parsed = parseClockinYearMonth(req.query.year, req.query.month);
+    if (!account || !cookie || !parsed) {
+      res.sendStatus(400);
+      return;
+    }
+
+    const ret = sqlPlugin.checkHash(account, cookie);
+    if (ret == null || ret['accountType'] == 'employee') {
+      res.sendStatus(403);
+      return;
+    }
+
+    const activity = new Set(sqlPlugin.employeeIdsWithMonthActivity(parsed.yearKey, parsed.monthKey));
+    const employees = sqlPlugin.getAllUsers().filter((user) => {
+      if (user.type !== 'employee' || user.id === 'monitor' || !(user.name || '').trim()) {
+        return false;
+      }
+      if (user.status === 1) {
+        return true;
+      }
+      return user.status === 0 && activity.has(user.id);
+    }).map((user) => ({
+      id: user.id,
+      name: user.name,
+      status: user.status,
+    }));
+    employees.sort((a, b) => compareEmployeeId(a.id, b.id));
+    res.json({ employees });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
+});
+
+app.get('/api/clockin/employee', async (req: Request, res: Response) => {
+  try {
+    const account = String(req.query.account || '');
+    const cookie = String(req.query.cookie || '');
+    const id = String(req.query.id || '');
+    const parsed = parseClockinYearMonth(req.query.year, req.query.month);
+    if (!account || !cookie || !id || !parsed) {
+      res.sendStatus(400);
+      return;
+    }
+
+    const ret = sqlPlugin.checkHash(account, cookie);
+    if (ret == null || ret['accountType'] == 'employee') {
+      res.sendStatus(403);
+      return;
+    }
+
+    const user = sqlPlugin.getUser(id);
+    if (!user || user.type !== 'employee' || user.id === 'monitor') {
+      res.status(404).json({ message: '找不到這位員工' });
+      return;
+    }
+
+    const { year, month, yearKey, monthKey } = parsed;
+    const monthRecords = await sqlPlugin.clockinRecord(yearKey, monthKey);
+    const punches = indexPunches(monthRecords.filter((item) => item.id === id));
+    const edits = indexEdits(sqlPlugin.clockinEditsForMonth(yearKey, monthKey).filter((item) => item.id === id));
+    const snapshot = sqlPlugin.clockinMasterRows(yearKey, monthKey, id);
+    const totalDays = new Date(year, month, 0).getDate();
+    const days = [];
+    for (let day = 1; day <= totalDays; day++) {
+      const date = `${yearKey}-${monthKey}-${day.toString().padStart(2, '0')}`;
+      const live = summarizeClockinDay(punches.get(clockinKey(id, date)) || [], edits.get(clockinKey(id, date)) || null, user.name || '');
+      days.push({
+        day,
+        date,
+        clockin: live.clockin,
+        clockout: live.clockout,
+        hasRecord: live.hasRecord,
+        modified: live.modified,
+        reason: live.reason,
+        editorName: live.editorName,
+        editedAt: live.editedAt,
       });
     }
 
-    for (const record of dayRecords) {
-      const current = mergedRecords.get(record.id);
-      if (!current) {
-        continue;
-      }
-      if (record.clockin && !current.clockin) {
-        current.clockin = record.clockin;
-      }
-      if (record.clockout && !current.clockout) {
-        current.clockout = record.clockout;
-      }
-      current.hasRecord = true;
+    res.json({
+      employee: { id: user.id, name: user.name, status: user.status },
+      masterReady: sqlPlugin.clockinMasterReady(yearKey, monthKey),
+      downloadable: snapshot.length > 0,
+      days,
+    });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
+});
+
+app.post('/api/clockin/edit', async (req: Request, res: Response) => {
+  try {
+    const body = (req.body && typeof req.body === 'object') ? req.body as { [key: string]: unknown } : {};
+    const account = bodyText(body['account']);
+    const cookie = bodyText(body['cookie']);
+    const id = bodyText(body['id']);
+    const date = bodyText(body['date']);
+    const clockin = body['clockin'] == null ? null : String(body['clockin']);
+    const clockout = body['clockout'] == null ? null : String(body['clockout']);
+    const reason = body['reason'] == null ? '' : String(body['reason']);
+
+    if (!account || !cookie || !id || !date) {
+      res.sendStatus(400);
+      return;
     }
 
-    const data = Array.from(mergedRecords.values()).map((item) => {
-      return {
-        id: item.id,
-        name: item.name,
-        clockin: item.clockin,
-        clockout: item.clockout,
-        hasRecord: item.hasRecord,
-      };
-    });
+    const ret = sqlPlugin.checkHash(account, cookie);
+    if (ret == null || ret['accountType'] == 'employee') {
+      res.sendStatus(403);
+      return;
+    }
 
-    res.json({ year, month, day, records: data });
+    const user = sqlPlugin.getUser(id);
+    if (!user || user.type !== 'employee' || user.id === 'monitor') {
+      res.status(404).json({ message: '找不到這位員工' });
+      return;
+    }
+
+    const today = taipeiToday();
+    let currentClockin: string | null = null;
+    let currentClockout: string | null = null;
+    if (isRealDate(date) && date <= today) {
+      const yearKey = date.slice(0, 4);
+      const monthKey = date.slice(5, 7);
+      const monthRecords = await sqlPlugin.clockinRecord(yearKey, monthKey);
+      const punches = monthRecords.filter((item) => item.id === id && item.date === date);
+      const dayEdits = sqlPlugin.clockinEditsForDate(date);
+      let edit: ClockEdit | null = null;
+      for (const item of dayEdits) {
+        if (item.id === id) {
+          edit = item;
+          break;
+        }
+      }
+      const live = summarizeClockinDay(punches, edit, user.name || '');
+      currentClockin = live.clockin;
+      currentClockout = live.clockout;
+    }
+
+    const decision = decideEdit(
+      { clockin: currentClockin, clockout: currentClockout },
+      { date, clockin, clockout, reason },
+      today
+    );
+    if (!decision.ok) {
+      res.status(400).json({ message: decision.message });
+      return;
+    }
+    if (decision.kind === 'unchanged') {
+      res.status(200).json({ status: 'unchanged', message: '時間沒有變更' });
+      return;
+    }
+
+    sqlPlugin.saveClockinEdit({
+      id: user.id,
+      date,
+      name: user.name || '',
+      clockin: decision.clockin,
+      clockout: decision.clockout,
+      reason: decision.reason,
+      editorId: account,
+      editorName: ret['name'],
+    });
+    log.logFormat(`${ret['name']} (${account}) corrected clock-in of ${user.name} (${id}) on ${date}.`);
+    res.status(200).json({ status: 'saved' });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
+});
+
+app.get('/api/clockin/personal', async (req: Request, res: Response) => {
+  try {
+    const account = String(req.query.account || '');
+    const cookie = String(req.query.cookie || '');
+    const id = String(req.query.id || '');
+    const parsed = parseClockinYearMonth(req.query.year, req.query.month);
+    if (!account || !cookie || !id || !parsed) {
+      res.sendStatus(400);
+      return;
+    }
+
+    const ret = sqlPlugin.checkHash(account, cookie);
+    if (ret == null || ret['accountType'] == 'employee') {
+      res.sendStatus(403);
+      return;
+    }
+
+    const result = await personalClockinPdf(sqlPlugin, parsed.yearKey, parsed.monthKey, id);
+    if (result.kind === 'no-master') {
+      res.status(409).json({ message: '請先重新載入，產生該月總表' });
+      return;
+    }
+    if (result.kind === 'no-rows') {
+      res.status(404).json({ message: '總表沒有這位員工的紀錄' });
+      return;
+    }
+
+    res.status(200);
+    res.set('Content-Type', 'application/pdf');
+    res.set('Content-Disposition', clockinAttachmentDisposition(result.filename, parsed.yearKey, parsed.monthKey, id));
+    res.send(result.buffer);
   } catch (e) {
     log.logFormat((e as string), new Date());
     res.sendStatus(500);
@@ -364,3 +581,91 @@ app.get('/api/calendar/export', async (req: Request, res: Response) => {
     res.sendStatus(500);
   }
 });
+
+function compareEmployeeId(a: string, b: string): number {
+  return a.localeCompare(b, 'zh-Hant', { numeric: true, sensitivity: 'base' });
+}
+
+function parseClockinYearMonth(yearRaw: unknown, monthRaw: unknown): { year: number; month: number; yearKey: string; monthKey: string } | null {
+  const yearText = String(yearRaw == null ? '' : yearRaw).trim();
+  const monthText = String(monthRaw == null ? '' : monthRaw).trim();
+  if (!/^\d{4}$/.test(yearText) || !/^\d{1,2}$/.test(monthText)) {
+    return null;
+  }
+  const year = parseInt(yearText, 10);
+  const month = parseInt(monthText, 10);
+  if (month < 1 || month > 12) {
+    return null;
+  }
+  return {
+    year,
+    month,
+    yearKey: yearText,
+    monthKey: month.toString().padStart(2, '0'),
+  };
+}
+
+function bodyText(value: unknown): string {
+  if (value == null) {
+    return '';
+  }
+  return String(value);
+}
+
+function clockinKey(id: string, date: string): string {
+  return `${id}\t${date}`;
+}
+
+function indexPunches<T extends { id: string; date: string }>(records: T[]): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const record of records) {
+    const key = clockinKey(record.id, record.date);
+    const list = map.get(key);
+    if (list) {
+      list.push(record);
+    } else {
+      map.set(key, [record]);
+    }
+  }
+  return map;
+}
+
+function indexEdits(edits: ClockEdit[]): Map<string, ClockEdit> {
+  const map = new Map<string, ClockEdit>();
+  for (const edit of edits) {
+    map.set(clockinKey(edit.id, edit.date), edit);
+  }
+  return map;
+}
+
+function summarizeClockinDay(
+  punches: Array<{ id: string; name: string; date: string; num: number; clockin: string | null; clockout: string | null }>,
+  edit: ClockEdit | null,
+  fallbackName: string
+): {
+  clockin: string | null;
+  clockout: string | null;
+  hasRecord: boolean;
+  modified: boolean;
+  reason: string;
+  editorName: string | null;
+  editedAt: string | null;
+} {
+  const row = aggregateDay(punches, edit, fallbackName);
+  return {
+    clockin: row ? row.clockin : null,
+    clockout: row ? row.clockout : null,
+    hasRecord: punches.length > 0 || edit !== null,
+    modified: row ? row.modified : false,
+    reason: row ? row.reason : '',
+    editorName: row ? row.editorName : null,
+    editedAt: row ? row.editedAt : null,
+  };
+}
+
+function clockinAttachmentDisposition(filename: string, yearKey: string, monthKey: string, id: string): string {
+  const safeId = id.replace(/[^A-Za-z0-9._-]/g, '_') || 'employee';
+  const ascii = `${yearKey}-${monthKey}_${safeId}_clockin.pdf`;
+  const encoded = encodeURIComponent(filename).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}

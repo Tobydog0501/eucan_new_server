@@ -53,6 +53,9 @@
                                     <option value="12">12月</option>
                                 </select>
                                 <select id="day" class="form-select calendar-select"></select>
+                                <select id="employee" class="form-select calendar-select" aria-label="員工">
+                                    <option value="">全部</option>
+                                </select>
                                 <button id="upData" class="btn btn-primary">重新載入</button>
                                 <a class="btn btn-outline-secondary"
                                     href="https://drive.google.com/drive/folders/1_4mNF0GZOGRhZ30ZHcm6zcVxT3oJ1R6E?usp=sharing"
@@ -65,6 +68,37 @@
             </div>
         </div>
     </section>
+
+    <div class="modal fade" id="clockinEditModal" tabindex="-1" aria-labelledby="clockinEditTitle" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form id="clockinEditForm">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="clockinEditTitle">補正</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label" for="clockinEditClockin">上班時間</label>
+                            <input type="time" class="form-control" id="clockinEditClockin">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="clockinEditClockout">下班時間</label>
+                            <input type="time" class="form-control" id="clockinEditClockout">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="clockinEditReason">修改原因</label>
+                            <textarea class="form-control" id="clockinEditReason" maxlength="200" rows="3"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                        <button type="submit" class="btn btn-primary" id="clockinEditSave">儲存</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
     <script src="../js/jquery-3.7.1.min.js"></script>
     <script src="../js/cookieOperation.js"></script>

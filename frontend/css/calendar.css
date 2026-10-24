@@ -304,6 +304,52 @@ header img {
 	font-size: calc(0.9rem * var(--record-font-scale, 1));
 }
 
+.record-card-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+	margin-top: 0.75rem;
+}
+
+.record-download-wrap {
+	display: inline-block;
+}
+
+.record-download-wrap .record-download-btn:disabled {
+	pointer-events: none;
+}
+
+.record-month-bar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	margin-bottom: 0.75rem;
+}
+
+.record-table-wrap {
+	width: 100%;
+	overflow-x: auto;
+}
+
+.record-calendar-page .record-month-table {
+	min-width: 920px;
+	margin-bottom: 0;
+	font-size: calc(0.95rem * var(--record-font-scale, 1));
+	border: 1px solid #d9e2ec;
+}
+
+.record-month-table th,
+.record-month-table td {
+	vertical-align: middle;
+}
+
+.record-month-table .record-cell-reason {
+	min-width: 12rem;
+	white-space: normal;
+	word-break: break-word;
+}
+
 :root {
 	--record-font-scale: 1;
 }
