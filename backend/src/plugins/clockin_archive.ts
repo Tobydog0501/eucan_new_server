@@ -29,6 +29,24 @@ export async function writeClockinMaster(sqlPlugin: sql, year: string | number, 
   return filePath;
 }
 
+export function readMasterClockinPdf(
+  sqlPlugin: sql,
+  year: string | number,
+  month: string | number
+): { kind: 'no-master' } | { kind: 'pdf'; buffer: Buffer; filename: string } {
+  const yearText = String(year);
+  const monthText = String(month).padStart(2, '0');
+  const filePath = path.join(process.cwd(), 'clock', clockinMasterFileName(yearText, monthText));
+  if (!sqlPlugin.clockinMasterReady(yearText, monthText) || !fs.existsSync(filePath)) {
+    return { kind: 'no-master' };
+  }
+  return {
+    kind: 'pdf',
+    buffer: fs.readFileSync(filePath),
+    filename: `${yearText}-${monthText}_打卡紀錄.pdf`,
+  };
+}
+
 export async function personalClockinPdf(
   sqlPlugin: sql,
   year: string | number,
