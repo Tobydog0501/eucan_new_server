@@ -64,7 +64,7 @@ $(function () {
                 displayPage(currentPage, currentType);
             }
         });
-
+``
         // 分頁顯示
         function displayPage(page, type) {
             const filteredData = data.filter(d => d.type === type); // 先篩選符合 type 的資料

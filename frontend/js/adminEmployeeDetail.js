@@ -135,10 +135,10 @@ $(function () {
     }
 
     function formatLeaveDate(value) {
-        return value ? value.replace("T", " ") : null;
+        return value ? value : null;
     }
 
     function normalizeLeaveDate(value) {
-        return value ? value.replace(" ", "T").slice(0, 16) : "";
+        return value ? String(value).slice(0, 10) : "";
     }
 });
