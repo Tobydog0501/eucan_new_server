@@ -55,7 +55,7 @@ export class sql {
       const ret: null | object = this.checkHash(user, cookie);
       if (ret && user != "monitor") {
         log.logFormat(`${user} has logined with cookie successfully.`);
-        return { msg: "success", accountType: sqldata["type"], sessionKey: hash, name: sqldata["name"] };
+        return { msg: "success", accountType: sqldata["type"], sessionKey: cookie, name: sqldata["name"] };
       }
       else expired = true;
     }
@@ -228,7 +228,7 @@ export class sql {
    * @param {string} cookie 
    * @returns 
    */
-  checkHash(user: string, cookie: string): { msg: string, accountType: string, sessionKey: string } | null {
+  checkHash(user: string, cookie: string): { msg: string, accountType: string, sessionKey: string, name: string } | null {
     if (user.match(/['"?><:;\\|)(*&^%$#@!~`]/) || cookie.match(/['"?><:;\\|)(*&^%$#@!~`]/)) {
       return null;
     }
@@ -248,7 +248,7 @@ export class sql {
       if (loginHashData["sKey"] == cookie) {
         // if cookie correct.
         this.login_db.prepare(`UPDATE logininfo SET createTime = strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours') WHERE id= ?;`).run(user);
-        return { msg: "success", accountType: sqldata["type"], sessionKey: cookie };
+        return { msg: "success", accountType: sqldata["type"], sessionKey: cookie, name: sqldata["name"] };
       } else {
         return null;
       }

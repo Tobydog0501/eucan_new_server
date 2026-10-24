@@ -25,8 +25,8 @@ $(function () {
         return;
     }
 
+    renderGreeting(username);
     loginCheck(userId, sessionKey);
-    $("#name").text(`${username || ""}~~您好`);
 
     $(document).on("click", "#logoutBtn", () => {
         deleteCookie("session");

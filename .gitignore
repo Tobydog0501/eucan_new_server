@@ -16,3 +16,4 @@ frontend/logs
 nginx/logs
 backend/plugins
 nginx/acme
+.scratch

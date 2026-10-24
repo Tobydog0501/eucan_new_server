@@ -1,0 +1,19 @@
+header li {
+    margin: 0 20px;
+}
+
+nav {
+    font-size: 20px;
+}
+
+header img {
+    width: 130px;
+}
+
+.table {
+    font-size: 18px;
+}
+
+#result ul {
+    padding-left: 1.25rem;
+}
