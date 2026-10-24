@@ -1,8 +1,4 @@
 /* 🔹 Header 樣式 */
-header li {
-    margin: 0 20px; /* 保持原來的間距 */
-}
-
 nav {
     font-size: 20px;
 }
