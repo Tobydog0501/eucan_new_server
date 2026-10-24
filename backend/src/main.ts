@@ -251,6 +251,7 @@ app.get('/api/clockin/view', async (req: Request, res: Response) => {
     const punches = indexPunches(monthRecords);
     const edits = indexEdits(sqlPlugin.clockinEditsForMonth(yearKey, monthKey));
     const downloadableIds = new Set(sqlPlugin.clockinMasterRows(yearKey, monthKey).map((row) => row.id));
+    const onLeaveIds = new Set(sqlPlugin.approvedLeaveIdsOnDate(date));
     const records = users.map((user) => {
       const live = summarizeClockinDay(punches.get(clockinKey(user.id, date)) || [], edits.get(clockinKey(user.id, date)) || null, user.name);
       return {
@@ -259,6 +260,7 @@ app.get('/api/clockin/view', async (req: Request, res: Response) => {
         clockin: live.clockin,
         clockout: live.clockout,
         hasRecord: live.hasRecord,
+        onLeave: onLeaveIds.has(user.id),
         downloadable: downloadableIds.has(user.id),
         modified: live.modified,
         reason: live.reason,
