@@ -58,9 +58,18 @@ export class sql {
         clockout TEXT,
         modified INTEGER NOT NULL,
         reason TEXT NOT NULL,
+        edited_at TEXT,
         PRIMARY KEY (year, month, date, id)
       );
     `);
+    this.ensureClockinMasterEditedAtColumn();
+  }
+
+  private ensureClockinMasterEditedAtColumn(): void {
+    const columns = this.login_db.prepare(`PRAGMA table_info(clockin_master_row);`).all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'edited_at')) {
+      this.login_db.prepare(`ALTER TABLE clockin_master_row ADD COLUMN edited_at TEXT;`).run();
+    }
   }
 
   login(user: string, pwd: string | null, cookie: string | null): { msg: string, accountType?: string, sessionKey?: string, name?: string } {
@@ -832,8 +841,8 @@ export class sql {
     const parts = this.clockMonthParts(year, month);
     const remove = this.login_db.prepare(`DELETE FROM clockin_master_row WHERE year = ? AND month = ?;`);
     const insert = this.login_db.prepare(
-      `INSERT INTO clockin_master_row (year, month, date, id, name, clockin, clockout, modified, reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`
+      `INSERT INTO clockin_master_row (year, month, date, id, name, clockin, clockout, modified, reason, edited_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
     );
     const mark = this.login_db.prepare(
       `INSERT INTO clockin_master (year, month, generated_at)
@@ -853,7 +862,8 @@ export class sql {
           row.clockin,
           row.clockout,
           row.modified ? 1 : 0,
-          row.modified ? row.reason : ''
+          row.modified ? row.reason : '',
+          row.modified ? row.editedAt : null
         );
       }
       mark.run(parts.year, parts.month);
@@ -871,11 +881,11 @@ export class sql {
     const parts = this.clockMonthParts(year, month);
     const rows = (id == null
       ? this.login_db.prepare(
-        `SELECT date, id, name, clockin, clockout, modified, reason
+        `SELECT date, id, name, clockin, clockout, modified, reason, edited_at
          FROM clockin_master_row WHERE year = ? AND month = ?;`
       ).all(parts.year, parts.month)
       : this.login_db.prepare(
-        `SELECT date, id, name, clockin, clockout, modified, reason
+        `SELECT date, id, name, clockin, clockout, modified, reason, edited_at
          FROM clockin_master_row WHERE year = ? AND month = ? AND id = ?;`
       ).all(parts.year, parts.month, id)) as ClockMasterSqlRow[];
     const mapped = rows.map((row) => this.toClockSheetRow(row));
@@ -951,7 +961,7 @@ export class sql {
       modified,
       reason: modified ? (row.reason || '') : '',
       editorName: null,
-      editedAt: null,
+      editedAt: modified ? (row.edited_at || null) : null,
     };
   }
 
@@ -977,6 +987,7 @@ type ClockMasterSqlRow = {
   clockout: string | null;
   modified: number;
   reason: string | null;
+  edited_at: string | null;
 };
 
 function calculate(startDate: Date, endDate: Date): { m: number, d: number } {

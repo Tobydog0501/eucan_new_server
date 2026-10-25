@@ -269,6 +269,7 @@ function sheetKey(id: string, date: string): string {
 
 function pdfColumns(doc: PDFKit.PDFDocument): PdfColumn[] {
   const usable = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const editedAtWidth = 76;
   const fixed: PdfColumn[] = [
     { title: '日期', width: 70, value: (row) => row.date },
     { title: '員工編號', width: 54, value: (row) => row.id },
@@ -277,12 +278,26 @@ function pdfColumns(doc: PDFKit.PDFDocument): PdfColumn[] {
     { title: '下班時間', width: 48, value: (row) => displayTime(row.clockout) },
     { title: '修改紀錄', width: 52, value: (row) => row.modified ? '是' : '否' },
   ];
-  const used = fixed.reduce((sum, column) => sum + column.width, 0);
-  return fixed.concat({
-    title: '修改原因',
-    width: Math.max(usable - used, 80),
-    value: (row) => row.reason,
-  });
+  const used = fixed.reduce((sum, column) => sum + column.width, 0) + editedAtWidth;
+  return fixed.concat(
+    {
+      title: '修改原因',
+      width: Math.max(usable - used, 80),
+      value: (row) => row.reason,
+    },
+    {
+      title: '修改時間',
+      width: editedAtWidth,
+      value: displayEditedAt,
+    },
+  );
+}
+
+function displayEditedAt(row: ClockSheetRow): string {
+  if (!row.modified || !row.editedAt) {
+    return '';
+  }
+  return row.editedAt;
 }
 
 function drawHeader(doc: PDFKit.PDFDocument, columns: PdfColumn[], y: number): number {
