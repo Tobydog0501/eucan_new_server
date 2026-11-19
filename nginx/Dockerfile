@@ -1,7 +1,7 @@
 # ---------------------------------------------------
 # Stage 1: Build the dynamic module
 # ---------------------------------------------------
-FROM nginx:alpine AS builder
+FROM nginx:1.31.9-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache \
@@ -41,7 +41,7 @@ RUN CONFARGS=$(nginx -V 2>&1 | sed -n -e 's/^.*arguments: //p') \
 # ---------------------------------------------------
 
 
-FROM nginx:alpine AS builder2
+FROM nginx:1.31.9-alpine AS builder2
 
 # Install build dependencies
 RUN apk add --no-cache \
@@ -71,7 +71,7 @@ RUN git clone https://github.com/nginx/nginx-acme && cd nginx-acme \
 # ---------------------------------------------------
 # Stage 3: Create the final image
 # ---------------------------------------------------
-FROM nginx:alpine
+FROM nginx:1.31.9-alpine
 
 # 1. Copy the compiled module from the builder stage
 COPY --from=builder /tmp/nginx-${NGINX_VERSION}/objs/ngx_http_headers_more_filter_module.so /usr/lib/nginx/modules/

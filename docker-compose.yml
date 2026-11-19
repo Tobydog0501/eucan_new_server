@@ -9,7 +9,6 @@ services:
       - "443:443"
       - "3000:3000"
       - "8000:8000"
-      - "443:443/udp"
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d
       - ./nginx/var/www/html:/var/www/html
