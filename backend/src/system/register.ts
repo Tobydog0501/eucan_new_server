@@ -3,72 +3,77 @@ import { valid } from "../plugins/checkvalid";
 import { mailer } from "../plugins/mailer";
 import logger from "../plugins/logger";
 import { sql } from "../plugins/sql";
-import { digit } from "../types/types";
+import { canCreate } from "../plugins/account_rules";
+import { isRealDate } from "../plugins/clockin_sheet";
 
-
-// Account types that can be created through this endpoint.
-const CREATABLE_TYPES = ["employee", "admin"];
-// Built-in accounts that must never be (re)created through the API.
-const RESERVED_IDS = ["root", "monitor"];
+/** "0"/"1" or 0/1 -> 0/1; anything else (including arrays) -> null. */
+function zeroOrOne(value: unknown): 0 | 1 | null {
+    if (typeof value !== "string" && typeof value !== "number") return null;
+    if (`${value}` === "0") return 0;
+    if (`${value}` === "1") return 1;
+    return null;
+}
 
 module.exports = function utils(sqlPlugin:sql,log:logger,mailer:mailer,req:Request,res:Response):void{
     const dataReceived:{[key:string]:any} = req.body;
-
-    const account = dataReceived["account"] as string;
-    const cookie = dataReceived["cookie"] as string;
-    const user = dataReceived["user"] as string;
-    const password = dataReceived["pwd"] as string;
-    const mail = dataReceived["mail"] as string;
-    const name = dataReceived["name"] as string;
-    const jointime = dataReceived["date"] as string;
-    const type = dataReceived["type"]?dataReceived["type"] as string:"employee";
-    const mgroup = dataReceived["mgroup"] as digit;
-    // permit:1 == NEED permition
-    const permit = dataReceived["permit"];
 
     if(!valid(dataReceived,["account","cookie","user","pwd","mail","name","date","mgroup","permit"])){
         res.sendStatus(400);
         return;
     }
 
+    const account = dataReceived["account"];
+    const cookie = dataReceived["cookie"];
+    const user = dataReceived["user"];
+    const password = dataReceived["pwd"];
+    const mail = dataReceived["mail"];
+    const name = dataReceived["name"];
+    const jointime = dataReceived["date"];
+    const type = dataReceived["type"] ? dataReceived["type"] : "employee";
+    const mgroup = zeroOrOne(dataReceived["mgroup"]);
+    // permit: 1 == leave requests need approval
+    const permit = zeroOrOne(dataReceived["permit"]);
+
     const textFields = [account, cookie, user, password, mail, name, jointime, type];
     if (textFields.some((v) => typeof v !== "string" || v.length === 0)) {
         res.sendStatus(400);
         return;
     }
-    if (!CREATABLE_TYPES.includes(type) || !["0", "1"].includes(`${mgroup}`) || !["0", "1"].includes(`${permit}`)) {
+    if (mgroup === null || permit === null || !isRealDate(jointime)) {
         res.sendStatus(400);
         return;
     }
 
     let ret = sqlPlugin.checkHash(account,cookie);
-    // Only admins may create accounts, and only root may create another admin.
+    // Only admins may create accounts; see account_rules.ts for the rest.
     if (ret==null || ret["accountType"]!="admin"){
         res.sendStatus(403);
         return;
     }
-    if (type == "admin" && account != "root") {
-        res.sendStatus(403);
+    const decision = canCreate(account, user, type);
+    if (!decision.ok) {
+        log.logFormat(`${account} was refused creating account ${user}: ${decision.reason}.`);
+        res.sendStatus(decision.status);
         return;
     }
-    if (RESERVED_IDS.includes(user.toLowerCase())) {
-        res.sendStatus(403);
-        return;
-    }
+
     try{
         sqlPlugin.register(user,password,mail,name,type,jointime,mgroup,permit);
         sqlPlugin.init(user);
-        log.logFormat(`${account} successfully created an account with id: ${user}`);
-        mailer.send(mail,"請假系統帳號註冊成功",`${name} 您好，您的請假系統帳號已成功開通\n\n帳號為: ${user}\n密碼為您的身分證字號\n如有任何問題請洽主管\n\n<此信為系統自動發送，請勿回覆>`)
-            .catch((e) => log.logFormat(`Failed to send registration mail for ${user}: ${String(e)}`));
-        res.json({
-            "status":200,
-            "success":1
-        });
-    }catch{
+    }catch(e){
+        // Most often the id already exists.
+        log.logFormat(`Failed to create account ${user}: ${e instanceof Error ? e.message : String(e)}`);
         res.json({
             "status":200,
             "success":0
         });
+        return;
     }
+    log.logFormat(`${account} successfully created an account with id: ${user}`);
+    mailer.send(mail,"請假系統帳號註冊成功",`${name} 您好，您的請假系統帳號已成功開通\n\n帳號為: ${user}\n密碼為您的身分證字號\n如有任何問題請洽主管\n\n<此信為系統自動發送，請勿回覆>`)
+        .catch((e) => log.logFormat(`Failed to send registration mail for ${user}: ${String(e)}`));
+    res.json({
+        "status":200,
+        "success":1
+    });
 }
