@@ -88,7 +88,7 @@ function freePort() {
   });
 }
 
-async function startServer() {
+async function startServer(extraEnv = {}) {
   const mainJs = path.join(BUILD_DIR, 'main.js');
   if (!fs.existsSync(mainJs)) {
     throw new Error(`Compiled backend not found at ${mainJs}. Run "npm run build:test" first.`);
@@ -111,6 +111,7 @@ async function startServer() {
     PORT: String(port),
     // Point SMTP at a closed local port so every send fails fast and offline.
     SMTP_SERVER: '127.0.0.1',
+    ...extraEnv,
   };
   const proc = spawn(process.execPath, [mainJs], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';
