@@ -9,6 +9,7 @@ import { check_working_day, main as generateCalendarExcel } from './plugins/dayo
 import { startArchiveSchedule } from './plugins/archive_schedule';
 import { aggregateDay, ClockEdit, decideEdit, isRealDate, taipeiToday } from './plugins/clockin_sheet';
 import { personalClockinPdf, readMasterClockinPdf } from './plugins/clockin_archive';
+import { onDownloadDone } from './plugins/http_util';
 import path from 'path';
 import fs from 'fs';
 
@@ -621,12 +622,7 @@ app.get('/api/calendar/export', async (req: Request, res: Response) => {
 
     await generateCalendarExcel(year, month, sqlPlugin);
     const filePath = `/app/calendars/${year}-${month}calendar.xlsx`;
-    res.download(filePath, `${year}-${month}calendar.xlsx`, (err) => {
-      if (err) {
-        log.logFormat(`Failed to send calendar file: ${String(err)}`);
-        res.sendStatus(500);
-      }
-    });
+    res.download(filePath, `${year}-${month}calendar.xlsx`, onDownloadDone(res, log, 'calendar file'));
   } catch (e) {
     log.logFormat((e as string), new Date());
     res.sendStatus(500);

@@ -4,7 +4,7 @@ import { mailer } from "../plugins/mailer";
 import logger from "../plugins/logger";
 import { sql } from "../plugins/sql";
 import { caculateTime } from "../plugins/dayoff_calculate";
-import { validReason, validTime } from "../plugins/leave_input";
+import { validRange, validReason, validTime } from "../plugins/leave_input";
 import { dayofftype } from "../types/types";
 
 
@@ -50,19 +50,24 @@ module.exports = async function utils(sqlPlugin: sql, log: logger, mailer: maile
     res.sendStatus(403);
     return;
   }
-  const totalTime = await caculateTime(start, end);
+  if (!validRange(start, end, { nearYearsOnly: true }).ok) {
+    res.sendStatus(400);
+    return;
+  }
 
+  // Authenticate before any work that may load or fetch calendar data.
+  let ret1 = sqlPlugin.checkHash(account, cookie);
+  if (ret1 == null) {
+    res.sendStatus(403);
+    return;
+  }
   const permission = sqlPlugin.getPermission(account);
   if (permission === null) {
     res.sendStatus(403);
     return;
   }
 
-  let ret1 = sqlPlugin.checkHash(account, cookie);
-  if (ret1 == null) {
-    res.sendStatus(403);
-    return;
-  }
+  const totalTime = await caculateTime(start, end);
   const ret = await sqlPlugin.newRequest(account, type, start, end, totalTime, reason);
   if (ret == null) {
     res.sendStatus(403);

@@ -4,7 +4,7 @@ import { mailer } from "../plugins/mailer";
 import logger from "../plugins/logger";
 import { sql } from "../plugins/sql";
 import { caculateTime } from "../plugins/dayoff_calculate";
-import { validReason, validTime } from "../plugins/leave_input";
+import { validRange, validReason, validTime } from "../plugins/leave_input";
 import { dayofftype } from "../types/types";
 
 const leaveTypes: dayofftype = {
@@ -52,6 +52,10 @@ module.exports = async function utils(sqlPlugin: sql, log: logger, mailer: maile
 
   if (!(validTime(start) && validTime(end))) {
     res.sendStatus(403);
+    return;
+  }
+  if (!validRange(start, end, { nearYearsOnly: true }).ok) {
+    res.sendStatus(400);
     return;
   }
 
