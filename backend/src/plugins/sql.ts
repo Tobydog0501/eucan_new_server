@@ -465,10 +465,19 @@ export class sql {
   //    return { "mgroup": query["mgroup"], "name": name, "num": count };
   //  }
 
-  showQuery(user: string, state: number = 0, search_query: string = "", limit_query: string = ""): requestquery[] | [] {
-    // const mgroup = this.login_db.prepare(`SELECT * FROM userinfo WHERE id='${user}'`).all()[0]["mgroup"];
-    const query: requestquery[] | [] = (this.login_db.prepare(`SELECT serialnum,name,type,start,end,reason,totalTime FROM requestquery WHERE state= ? ${search_query} ${limit_query};`).all(state) as requestquery[] | []);
-    // log.logFormat(`showquery executed with query: SELECT serialnum,name,type,start,end,reason,totalTime FROM requestquery WHERE state=${state} ${search_query} ${limit_query};`);
+  /**
+   * List tickets in a given state. Every filter value is bound as a query
+   * parameter; never splice caller input into the SQL text.
+   */
+  showQuery(state: number = 0, filters: { id?: string, year?: string, month?: string, limit?: number } = {}): requestquery[] | [] {
+    const clauses: string[] = ["state = ?"];
+    const params: Array<string | number> = [state];
+    if (filters.id) { clauses.push("id = ?"); params.push(filters.id); }
+    if (filters.year) { clauses.push("year = ?"); params.push(filters.year); }
+    if (filters.month) { clauses.push("month = ?"); params.push(filters.month); }
+    let tail = "";
+    if (filters.limit) { tail = " ORDER BY serialnum DESC LIMIT ?"; params.push(filters.limit); }
+    const query: requestquery[] | [] = (this.login_db.prepare(`SELECT serialnum,name,type,start,end,reason,totalTime FROM requestquery WHERE ${clauses.join(" AND ")}${tail};`).all(...params) as requestquery[] | []);
     return query;
   }
 

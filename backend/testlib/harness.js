@@ -169,4 +169,16 @@ async function startServer() {
   return { base, post, alive, db, stop, output: () => output };
 }
 
-module.exports = { startServer, session, USERS };
+// Create a seeded working directory without starting the server, for tests that
+// load compiled modules directly (they resolve ./databases relative to cwd).
+function makeWorkdir() {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'eucan-unit-'));
+  for (const dir of ['databases', 'logs', 'api', 'calendars', 'clock', 'proofs']) {
+    fs.mkdirSync(path.join(cwd, dir));
+  }
+  seed(path.join(cwd, 'databases', 'loginDatabase.db'));
+  writeCalendars([path.join(cwd, 'api'), path.join(BUILD_DIR, 'api')]);
+  return cwd;
+}
+
+module.exports = { startServer, makeWorkdir, session, USERS, BUILD_DIR };

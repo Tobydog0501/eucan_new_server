@@ -21,6 +21,6 @@ module.exports = function utils(sqlPlugin:sql,log:logger,mailer:mailer,req:Reque
         res.sendStatus(403);
         return
     }
-    const retu = sqlPlugin.showQuery(account,0);
+    const retu = sqlPlugin.showQuery(0);
     res.send({"data":retu});
 }
