@@ -73,6 +73,23 @@ export class sql {
     }
   }
 
+  /**
+   * Would login() accept these credentials? Read-only: no session is issued
+   * or refreshed and nothing is logged. Used to gate root's second factor.
+   */
+  credentialsValid(user: string, pwd: string | null, cookie: string | null): boolean {
+    if (typeof user !== "string") return false;
+    const row = this.login_db.prepare(`SELECT pwd, status FROM userinfo WHERE id= ?`).get(user) as { pwd: string, status: number } | undefined;
+    if (row === undefined || row.status == 0) return false;
+    if (typeof cookie === "string" && cookie !== "NULL") {
+      const session = this.login_db.prepare(`SELECT sKey, createTime FROM logininfo WHERE id= ?`).get(user) as { sKey: string, createTime: string } | undefined;
+      if (session && session.sKey === cookie && (Date.now() - Date.parse(session.createTime)) <= 60 * 60 * 1000) {
+        return true;
+      }
+    }
+    return typeof pwd === "string" && pwd == row.pwd;
+  }
+
   login(user: string, pwd: string | null, cookie: string | null): { msg: string, accountType?: string, sessionKey?: string, name?: string } {
     if (typeof user !== "string" || (pwd !== null && typeof pwd !== "string") || (cookie !== null && typeof cookie !== "string")) {
       return { msg: "wrong type" };
