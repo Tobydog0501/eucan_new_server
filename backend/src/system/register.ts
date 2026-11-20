@@ -6,6 +6,11 @@ import { sql } from "../plugins/sql";
 import { digit } from "../types/types";
 
 
+// Account types that can be created through this endpoint.
+const CREATABLE_TYPES = ["employee", "admin"];
+// Built-in accounts that must never be (re)created through the API.
+const RESERVED_IDS = ["root", "monitor"];
+
 module.exports = function utils(sqlPlugin:sql,log:logger,mailer:mailer,req:Request,res:Response):void{
     const dataReceived:{[key:string]:any} = req.body;
 
@@ -26,8 +31,27 @@ module.exports = function utils(sqlPlugin:sql,log:logger,mailer:mailer,req:Reque
         return;
     }
 
+    const textFields = [account, cookie, user, password, mail, name, jointime, type];
+    if (textFields.some((v) => typeof v !== "string" || v.length === 0)) {
+        res.sendStatus(400);
+        return;
+    }
+    if (!CREATABLE_TYPES.includes(type) || !["0", "1"].includes(`${mgroup}`) || !["0", "1"].includes(`${permit}`)) {
+        res.sendStatus(400);
+        return;
+    }
+
     let ret = sqlPlugin.checkHash(account,cookie);
-    if (ret==null){
+    // Only admins may create accounts, and only root may create another admin.
+    if (ret==null || ret["accountType"]!="admin"){
+        res.sendStatus(403);
+        return;
+    }
+    if (type == "admin" && account != "root") {
+        res.sendStatus(403);
+        return;
+    }
+    if (RESERVED_IDS.includes(user.toLowerCase())) {
         res.sendStatus(403);
         return;
     }
@@ -36,6 +60,7 @@ module.exports = function utils(sqlPlugin:sql,log:logger,mailer:mailer,req:Reque
         sqlPlugin.init(user);
         log.logFormat(`${account} successfully created an account with id: ${user}`);
         mailer.send(mail,"請假系統帳號註冊成功",`${name} 您好，您的請假系統帳號已成功開通\n\n帳號為: ${user}\n密碼為您的身分證字號\n如有任何問題請洽主管\n\n<此信為系統自動發送，請勿回覆>`)
+            .catch((e) => log.logFormat(`Failed to send registration mail for ${user}: ${String(e)}`));
         res.json({
             "status":200,
             "success":1
