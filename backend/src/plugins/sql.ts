@@ -5,6 +5,7 @@ import { getSplitTimestamp, fetch_all_nwd, getROCYearsInRange } from "./dayoff_c
 import { userinfo, dayoffinfo, clockinrecord, requestquery, logininfo, digit, dayofftype, dayoffinfo_ret } from "../types/types";
 import { ClockEdit, ClockSheetRow, normalizeTime } from "./clockin_sheet";
 import { join } from "path";
+import { DAYOFF_COLUMNS, dayoffColumnFor, leaveColumn } from "./leave_types";
 // const logger = require("./logger.js");
 const log: logger = new logger(`./logs/${new Date().toISOString().split('T')[0]}.log`);
 
@@ -244,31 +245,27 @@ export class sql {
     return;
   }
 
-  modify(user: string, year: digit, dayoff: string) {
-    const table = {
-      "特休假": "annual",
-      "事假": "personal",
-      "家庭照顧假": "care",
-      "病假": "sick",
-      "婚假": "wedding",
-      "喪假": "funeral",
-      "分娩假": "birth",
-      "產檢假": "pcheckup",
-      "流產假": "miscarriage",
-      "陪產假": "paternity",
-      "產假": "maternity",
-      "公假": "official",
-      "颱風假": "typhoon",
-      "其他": "other"
-    };
-    const entries: [string, string][] = Object.entries(dayoff)
-    const query: string[] = entries.map((v, i, a) => {
-      return `${v[0]} = ?`;
-    });
-    // console.log(query.join(","))
-    this.login_db.prepare(`UPDATE dayoffinfo SET ${query.join(",")} WHERE id= ? AND year= ?`).run(user, year.toString());
-    return;
-
+  /**
+   * Overwrite leave usage for one user/year. Keys must resolve to a known
+   * dayoffinfo column (see leave_types.ts); values are bound as parameters.
+   * Returns the number of rows updated, or null when any key is not allowed.
+   */
+  modify(user: string, year: string, dayoff: { [key: string]: number }): number | null {
+    const assignments: string[] = [];
+    const values: number[] = [];
+    for (const [key, value] of Object.entries(dayoff)) {
+      const column = dayoffColumnFor(key);
+      if (column === null) {
+        return null;
+      }
+      assignments.push(`${column} = ?`);
+      values.push(value);
+    }
+    if (assignments.length === 0) {
+      return null;
+    }
+    const result = this.login_db.prepare(`UPDATE dayoffinfo SET ${assignments.join(", ")} WHERE id= ? AND year= ?`).run(...values, user, year);
+    return result.changes;
   }
 
   /**
@@ -493,27 +490,13 @@ export class sql {
   setPermit(num: string, state: number): string {
     const query = (this.login_db.prepare(`SELECT * FROM requestquery WHERE serialnum= ? `).get(num) as requestquery);
     const year: string = query["year"];
-    const table = {
-      "特休假": "annual",
-      "特休假_N": "annual_special",
-      "事假": "personal",
-      "家庭照顧假": "care",
-      "病假": "sick",
-      "婚假": "wedding",
-      "喪假": "funeral",
-      "分娩假": "birth",
-      "產檢假": "pcheckup",
-      "流產假": "miscarriage",
-      "陪產假": "paternity",
-      "產假": "maternity",
-      "公假": "official",
-      "停班停課": "typhoon",
-      "其他": "other"
-    };
-    console.log(query["type"]);
+    const column = leaveColumn(query["type"]);
 
     if (state == 1) {
-      if (table[(query["type"] as keyof dayofftype)] == "annual_special") {
+      if (column === null) {
+        throw new Error(`Ticket #${num} has an unknown leave type and cannot be approved.`);
+      }
+      if (column == "annual_special") {
         const ny: number = parseInt(year) + 1;
         if (!this.login_db.prepare(`SELECT * FROM dayoffinfo WHERE id= ? AND year= ?;`).get(query["id"], ny)) {
           this.init(query["id"], ny);
@@ -525,7 +508,8 @@ export class sql {
           this.init(query["id"], year);
         }
 
-        this.login_db.prepare(`UPDATE dayoffinfo SET ${table[(query["type"] as keyof dayofftype)]}=${table[(query["type"] as keyof dayofftype)]}+? WHERE id= ? AND year= ?;`).run(query["totalTime"], query["id"], year);
+        // `column` comes from the fixed leave-type list, never from caller input.
+        this.login_db.prepare(`UPDATE dayoffinfo SET ${column}=${column}+? WHERE id= ? AND year= ?;`).run(query["totalTime"], query["id"], year);
       }
     }
     this.login_db.prepare(`UPDATE requestquery SET state= ? WHERE serialnum= ?;`).run(state, num);
@@ -667,97 +651,33 @@ export class sql {
     const tickets = (this.login_db.prepare(`SELECT * FROM requestquery WHERE id= ? AND year= ? AND state=1;`).all(user, year) as requestquery[] | []);
     const ny: number = parseInt(`${year}`) + 1;
     const last_tickets = (this.login_db.prepare(`SELECT * FROM requestquery WHERE id= ? AND year= ? AND state=1;`).all(user, ny - 2) as requestquery[] | []);
-    const table = {
-      "特休假": "annual",
-      "特休假_N": "annual_special",
-      "事假": "personal",
-      "家庭照顧假": "care",
-      "病假": "sick",
-      "婚假": "wedding",
-      "喪假": "funeral",
-      "分娩假": "birth",
-      "產檢假": "pcheckup",
-      "流產假": "miscarriage",
-      "陪產假": "paternity",
-      "產假": "maternity",
-      "公假": "official",
-      "停班停課": "typhoon",
-      "其他": "other"
-    };
-    const amount = {
-      "annual": 0,
-      "annual_special": 0,
-      "personal": 0,
-      "care": 0,
-      "sick": 0,
-      "wedding": 0,
-      "funeral": 0,
-      "birth": 0,
-      "pcheckup": 0,
-      "miscarriage": 0,
-      "paternity": 0,
-      "maternity": 0,
-      "official": 0,
-      "typhoon": 0,
-      "other": 0
-    };
-    const last_amount = {
-      "annual": 0,
-      "annual_special": 0,
-      "personal": 0,
-      "care": 0,
-      "sick": 0,
-      "wedding": 0,
-      "funeral": 0,
-      "birth": 0,
-      "pcheckup": 0,
-      "miscarriage": 0,
-      "paternity": 0,
-      "maternity": 0,
-      "official": 0,
-      "typhoon": 0,
-      "other": 0
-    };
-    type atp = {
-      "annual": 0,
-      "annual_special": 0,
-      "personal": 0,
-      "care": 0,
-      "sick": 0,
-      "wedding": 0,
-      "funeral": 0,
-      "birth": 0,
-      "pcheckup": 0,
-      "miscarriage": 0,
-      "paternity": 0,
-      "maternity": 0,
-      "official": 0,
-      "typhoon": 0,
-      "other": 0
-    };
-    for (let ticket of tickets) {
-      amount[(table[(ticket["type"] as keyof dayofftype)] as keyof atp)] += ticket["totalTime"];
+    // Sum approved hours per column. Tickets with a type outside the fixed
+    // leave-type list are skipped (and logged) rather than turned into SQL.
+    const amount: { [column: string]: number } = {};
+    const lastAnnualSpecial = last_tickets
+      .filter((ticket) => leaveColumn(ticket["type"]) === "annual_special")
+      .reduce((sum, ticket) => sum + ticket["totalTime"], 0);
+    for (const column of DAYOFF_COLUMNS) {
+      amount[column] = 0;
     }
-    for (let ticket of last_tickets) {
-      last_amount[(table[(ticket["type"] as keyof dayofftype)] as keyof atp)] += ticket["totalTime"];
-    }
-    this.init(user, year);
-    var amount_array: string[] = [];
-    amount["annual"] += last_amount["annual_special"];
-    const values = [];
-    for (let type of Object.keys(amount)) {
-      if (type == "undefined") continue;
-      // console.log(type);
-      if (type == "annual_special") {
+    for (const ticket of tickets) {
+      const column = leaveColumn(ticket["type"]);
+      if (column === null) {
+        log.logFormat(`Skipping ticket #${ticket["serialnum"]} with unknown leave type while syncing ${user}.`);
         continue;
       }
-      amount_array.push(`${type} = ? `);
-      values.push(amount[(type as keyof atp)]);
+      if (column === "annual_special") {
+        continue;
+      }
+      amount[column] += ticket["totalTime"];
     }
-    values.push(user, year);
-    let queryString = amount_array.join(", ");
-    log.logFormat(`Syncing ${user}'s data with query: ${queryString}`);
-    this.login_db.prepare(`UPDATE dayoffinfo SET ${queryString} WHERE id= ? AND year= ?;`).run(values);
+    amount["annual"] += lastAnnualSpecial;
+    this.init(user, year);
+    const assignments = DAYOFF_COLUMNS.map((column) => `${column} = ?`);
+    const values: Array<string | number> = DAYOFF_COLUMNS.map((column) => amount[column]);
+    values.push(user, `${year}`);
+    log.logFormat(`Syncing ${user}'s leave usage for ${year}.`);
+    this.login_db.prepare(`UPDATE dayoffinfo SET ${assignments.join(", ")} WHERE id= ? AND year= ?;`).run(...values);
     return;
   }
 
