@@ -118,7 +118,11 @@ async function startServer() {
   proc.stderr.on('data', (d) => { output += d; });
 
   await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`server did not start:\n${output}`)), 15000);
+    const timer = setTimeout(() => {
+      // Never leave an orphaned backend behind when startup stalls.
+      proc.kill();
+      reject(new Error(`server did not start within 30s:\n${output}`));
+    }, 30000);
     const check = () => {
       if (output.includes('Server running')) { clearTimeout(timer); resolve(); }
     };

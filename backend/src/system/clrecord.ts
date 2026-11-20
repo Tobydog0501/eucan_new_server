@@ -11,13 +11,16 @@ module.exports = async function utils(sqlPlugin:sql,log:logger,mailer:mailer,req
 
     const account = dataReceived["account"] as string;
     const cookie = dataReceived["cookie"] as string;
-    const year = dataReceived["year"] as digit;
-    const month = (dataReceived["month"] as digit).toString().padStart(2,'0');
-
     if(!valid(dataReceived,["account","cookie","year","month"])){
         res.sendStatus(400);
         return;
     }
+    const year = dataReceived["year"] as digit;
+    if (!/^\d{4}$/.test(`${year}`) || !/^(0?[1-9]|1[0-2])$/.test(`${dataReceived["month"]}`)) {
+        res.sendStatus(400);
+        return;
+    }
+    const month = `${dataReceived["month"]}`.padStart(2,'0');
     
     let ret = sqlPlugin.checkHash(account,cookie);
     if (ret==null||ret["accountType"]=="employee"){

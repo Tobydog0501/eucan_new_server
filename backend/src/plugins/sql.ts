@@ -73,6 +73,9 @@ export class sql {
   }
 
   login(user: string, pwd: string | null, cookie: string | null): { msg: string, accountType?: string, sessionKey?: string, name?: string } {
+    if (typeof user !== "string" || (pwd !== null && typeof pwd !== "string") || (cookie !== null && typeof cookie !== "string")) {
+      return { msg: "wrong type" };
+    }
     if (cookie !== null) {
       if (user.match(/['"?><:;\\|)(*&^%$#@!~`]/) || cookie.match(/['"?><:;\\|)(*&^%$#@!~`]/) || cookie.match(/['"?><:;\\|)(*&^%$#@!~`]/)) {
         return { msg: "wrong type" };
@@ -275,11 +278,17 @@ export class sql {
    * @returns 
    */
   checkHash(user: string, cookie: string): { msg: string, accountType: string, sessionKey: string, name: string } | null {
+    if (typeof user !== "string" || typeof cookie !== "string") {
+      return null;
+    }
     if (user.match(/['"?><:;\\|)(*&^%$#@!~`]/) || cookie.match(/['"?><:;\\|)(*&^%$#@!~`]/)) {
       return null;
     }
-    const sqldata = (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ? `).get(user) as userinfo);
-    const loginHashData = (this.login_db.prepare(`SELECT * FROM logininfo WHERE id= ?;`).get(user) as logininfo);
+    const sqldata = (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ? `).get(user) as userinfo | undefined);
+    const loginHashData = (this.login_db.prepare(`SELECT * FROM logininfo WHERE id= ?;`).get(user) as logininfo | undefined);
+    if (sqldata == undefined || loginHashData == undefined) {
+      return null;
+    }
     const current: Date = new Date();
     const lastLogin = Date.parse(loginHashData["createTime"]);
     const DateLastLogin = new Date(lastLogin);

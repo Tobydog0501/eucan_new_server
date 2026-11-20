@@ -106,14 +106,31 @@ posts.forEach(v => {
       res.sendStatus(400);
       return;
     }
-    try {
-      utils(req, res);
-    } catch (e) {
-      log.logFormat((e as string), new Date());
-      res.sendStatus(500);
-    }
+    // Handlers may be sync or async; route both thrown errors and rejected
+    // promises to a 500 instead of letting a rejection take the process down.
+    Promise.resolve()
+      .then(() => utils(req, res))
+      .catch((e: unknown) => {
+        log.logFormat(`POST /${v} failed: ${errorText(e)}`, new Date());
+        if (!res.headersSent) {
+          res.sendStatus(500);
+        }
+      });
   });
 })
+
+// Last line of defence: log stray rejections (e.g. a fire-and-forget mail send)
+// rather than crashing every user's session.
+process.on('unhandledRejection', (reason: unknown) => {
+  log.logFormat(`Unhandled promise rejection: ${errorText(reason)}`, new Date());
+});
+
+function errorText(e: unknown): string {
+  if (e instanceof Error) {
+    return e.stack || e.message;
+  }
+  return String(e);
+}
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}/`);
