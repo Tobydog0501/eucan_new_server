@@ -6,6 +6,12 @@ import SMTPTransport from 'nodemailer/lib/smtp-transport';
 // const dotenv = require('dotenv');
 dotenv.config();
 
+/** SMTP port; 25 unless SMTP_PORT is set (used by tests to avoid a privileged port). */
+function smtpPort(): number {
+    const port = parseInt(process.env.SMTP_PORT || "", 10);
+    return Number.isInteger(port) && port > 0 && port < 65536 ? port : 25;
+}
+
 export class mailer{
     private option:SMTPTransport.Options;
     private transporter:Transporter
@@ -18,7 +24,7 @@ export class mailer{
             // "biz-mx2-6.hinet.net"
             host: process.env.SMTP_SERVER,
             // pool: true,
-            port: 25,
+            port: smtpPort(),
             secure: false,
             auth: {
                 user: process.env.USER_MAIL,
@@ -49,7 +55,7 @@ export class mailer{
          */
         this.option = {
             host: process.env.SMTP_SERVER,
-            port: 25,
+            port: smtpPort(),
             secure: false,
             auth: {
                 user: process.env.USER_MAIL,

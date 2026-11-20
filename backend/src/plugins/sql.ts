@@ -21,6 +21,10 @@ export class sql {
     log.logFormat("Database is connected with server.", new Date());
   }
 
+  close(): void {
+    this.login_db.close();
+  }
+
   private ensureUserinfoLeaveDateColumn(): void {
     const columns = this.login_db.prepare(`PRAGMA table_info(userinfo);`).all() as Array<{ name: string }>;
     const hasLeaveDate = columns.some((column) => column.name === 'leaveDate');

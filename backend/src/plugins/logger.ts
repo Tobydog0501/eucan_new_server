@@ -1,12 +1,14 @@
 // const fs = require("fs");
 import fs from 'fs';
+import path from 'path';
 
 class logger{
     private loggingFile:string;
 
     public constructor(fileName:string){
         // this.format = "[%Y/%M/%D %H:%m:%s] %d"
-        this.loggingFile = fileName;
+        // Resolve once, so a later change of cwd cannot redirect the log.
+        this.loggingFile = path.resolve(fileName);
     }
 
     /**
