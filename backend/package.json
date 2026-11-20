@@ -9,7 +9,6 @@
     "@types/better-sqlite3": "^7.6.12",
     "@types/body-parser": "^1.19.5",
     "@types/cors": "^2.8.17",
-    "@types/nodemailer": "^8.0.2",
     "@types/pdfkit": "^0.17.7",
     "@types/selenium-webdriver": "^4.1.28",
     "axios": "^1.7.9",
