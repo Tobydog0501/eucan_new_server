@@ -791,6 +791,11 @@ export class sql {
     return;
   }
 
+  getTicket(num: string): requestquery | null {
+    const row = this.login_db.prepare(`SELECT * FROM requestquery WHERE serialnum = ?;`).get(num) as requestquery | undefined;
+    return row ? row : null;
+  }
+
   getUser(id: string): userinfo | null {
     const row = this.login_db.prepare(`SELECT * FROM userinfo WHERE id = ?;`).get(id) as userinfo | undefined;
     return row ? row : null;
