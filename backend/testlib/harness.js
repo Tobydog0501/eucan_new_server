@@ -328,7 +328,15 @@ const unitDirs = [];
 // test returns. Node only emits 'exit' once that I/O has drained, so remove
 // the directories then instead of racing the writes.
 process.once('exit', () => {
-  for (const dir of unitDirs) removeDir(dir);
+  for (const dir of unitDirs) {
+    try {
+      removeDir(dir);
+    } catch (e) {
+      // Usually a DB handle a test forgot to close. Say so instead of
+      // leaving the directory behind silently.
+      process.stderr.write(`warning: could not remove test dir ${dir}: ${e.code || e.message}\n`);
+    }
+  }
 });
 
 async function inWorkdir(fn) {
