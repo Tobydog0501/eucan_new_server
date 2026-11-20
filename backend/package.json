@@ -1,4 +1,9 @@
 {
+  "scripts": {
+    "build": "tsc",
+    "build:test": "tsc --outDir .test-build",
+    "test": "npm run build:test && node --test --test-concurrency=1"
+  },
   "dependencies": {
     "@types/express": "^5.0.0",
     "@types/request": "^2.48.12",
