@@ -12,12 +12,16 @@ $(function () {
 
     const apiBase = `${window.location.protocol}//${window.location.hostname}:3000`;
     const editModal = new bootstrap.Modal(document.getElementById("clockinEditModal"));
+    const punchModal = new bootstrap.Modal(document.getElementById("punchModal"));
     let viewToken = 0;
     let directoryToken = 0;
     let periodToken = 0;
     let editSession = 0;
     let editingTarget = null;
     let savingEdit = false;
+    let punchTarget = null;
+    let punchAction = null;
+    let punchBusy = false;
 
     async function fetchAvailableYears() {
         const url = `${apiBase}/api/clockin/years?account=${encodeURIComponent(userId)}&cookie=${encodeURIComponent(sessionKey)}`;
@@ -117,6 +121,10 @@ $(function () {
         return `<button type="button" class="btn btn-sm btn-outline-primary record-edit-btn" data-id="${attr(id)}" data-name="${attr(name)}" data-date="${attr(date)}" data-clockin="${attr(clockin)}" data-clockout="${attr(clockout)}">補正</button>`;
     }
 
+    function punchButton(id, name, date) {
+        return `<button type="button" class="btn btn-sm btn-outline-danger record-punch-btn" data-id="${attr(id)}" data-name="${attr(name)}" data-date="${attr(date)}">打卡明細</button>`;
+    }
+
     function downloadButton(id, name, downloadable, masterReady) {
         const title = downloadTitle(downloadable, masterReady);
         const disabled = downloadable === true ? "" : " disabled";
@@ -207,6 +215,7 @@ $(function () {
                     ${modifiedRows}
                     <div class="record-card-actions">
                         ${editButton(record.id, record.name, targetDate, record.clockin, record.clockout)}
+                        ${punchButton(record.id, record.name, targetDate)}
                         ${downloadButton(record.id, record.name, record.downloadable, masterReady)}
                     </div>
                 </div>
@@ -242,7 +251,7 @@ $(function () {
                     <td class="record-cell-reason">${modified ? displayValue(day.reason) : ""}</td>
                     <td>${modified ? displayValue(day.editorName) : ""}</td>
                     <td>${modified ? displayValue(day.editedAt) : ""}</td>
-                    <td>${editButton(id, name, date, day.clockin, day.clockout)}</td>
+                    <td>${editButton(id, name, date, day.clockin, day.clockout)} ${punchButton(id, name, date)}</td>
                 </tr>
             `;
         }
@@ -263,7 +272,7 @@ $(function () {
                             <th>修改原因</th>
                             <th>修改的管理員</th>
                             <th>修改時間</th>
-                            <th>補正</th>
+                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody>${rows}</tbody>
@@ -502,6 +511,161 @@ $(function () {
         }
     }
 
+    // ---- Single punches: delete (admins) and restore (root) ----
+
+    async function fetchPunches(id, date) {
+        const url = `${apiBase}/api/clockin/punches?account=${encodeURIComponent(userId)}&cookie=${encodeURIComponent(sessionKey)}&id=${encodeURIComponent(id)}&date=${encodeURIComponent(date)}`;
+        try {
+            const resp = await fetch(url, { method: "GET", credentials: "include" });
+            if (!resp.ok) {
+                console.warn("Failed to fetch punches", resp.status);
+                return null;
+            }
+            return await resp.json();
+        } catch (error) {
+            console.error(error);
+            return null;
+        }
+    }
+
+    function hidePunchForm() {
+        punchAction = null;
+        $("#punchActionForm").addClass("d-none");
+        $("#punchActionReason").val("");
+    }
+
+    function renderPunches(data) {
+        if (!data || !Array.isArray(data.punches)) {
+            $("#punchList").html('<div class="calendar-empty">無法取得打卡明細。</div>');
+            $("#punchAudit").empty();
+            return;
+        }
+        const canRestore = data.canRestore === true;
+        if (data.punches.length === 0) {
+            $("#punchList").html('<div class="calendar-empty">這天沒有打卡紀錄。</div>');
+        } else {
+            let rows = "";
+            for (const punch of data.punches) {
+                const deleted = punch.deleted === true;
+                const status = deleted
+                    ? `已刪除<br><small>${displayValue(punch.deletedBy)}／${displayValue(punch.deletedAt)}<br>原因：${displayValue(punch.deleteReason)}</small>`
+                    : "有效";
+                const button = deleted
+                    ? (canRestore ? `<button type="button" class="btn btn-sm btn-outline-success punch-restore-btn" data-num="${attr(punch.num)}" data-clockin="${attr(punch.clockin)}" data-clockout="${attr(punch.clockout)}">復原</button>` : "")
+                    : `<button type="button" class="btn btn-sm btn-outline-danger punch-delete-btn" data-num="${attr(punch.num)}" data-clockin="${attr(punch.clockin)}" data-clockout="${attr(punch.clockout)}">刪除</button>`;
+                rows += `
+                    <tr class="${deleted ? "table-secondary text-muted" : ""}">
+                        <td>${escapeHtml(punch.num)}</td>
+                        <td>${displayValue(punch.clockin)}</td>
+                        <td>${displayValue(punch.clockout)}</td>
+                        <td>${status}</td>
+                        <td>${button}</td>
+                    </tr>`;
+            }
+            $("#punchList").html(`
+                <table class="table table-sm table-bordered">
+                    <thead><tr><th>#</th><th>上班</th><th>下班</th><th>狀態</th><th>操作</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>`);
+        }
+
+        const audit = Array.isArray(data.audit) ? data.audit : [];
+        if (!canRestore || audit.length === 0) {
+            $("#punchAudit").empty();
+            return;
+        }
+        let items = "";
+        for (const entry of audit) {
+            const verb = entry.action === "restore" ? "復原" : "刪除";
+            items += `<li>${displayValue(entry.acted_at)} ${displayValue(entry.actor_name)}（${displayValue(entry.actor_id)}）${verb}第 ${escapeHtml(entry.punch_num)} 筆，原因：${displayValue(entry.reason)}</li>`;
+        }
+        $("#punchAudit").html(`<div class="fw-bold mb-1">稽核紀錄</div><ul class="small mb-0">${items}</ul>`);
+    }
+
+    async function refreshPunches() {
+        if (!punchTarget) return;
+        const target = punchTarget;
+        const data = await fetchPunches(target.id, target.date);
+        if (punchTarget !== target) return;
+        renderPunches(data);
+    }
+
+    function openPunches(target) {
+        punchTarget = target;
+        hidePunchForm();
+        $("#punchModalTitle").text(`打卡明細 ${target.name} ${target.date}`);
+        $("#punchList").html('<div class="calendar-empty">載入中...</div>');
+        $("#punchAudit").empty();
+        punchModal.show();
+        refreshPunches();
+    }
+
+    function showPunchForm(kind, button) {
+        const num = button.attr("data-num") || "";
+        const clockin = button.attr("data-clockin") || "無";
+        const clockout = button.attr("data-clockout") || "無";
+        punchAction = { kind, num };
+        const verb = kind === "restore" ? "復原" : "刪除";
+        $("#punchActionTitle").text(`${verb}第 ${num} 筆打卡（上班 ${clockin}／下班 ${clockout}）`);
+        $("#punchActionLabel").text(`${verb}原因（必填）`);
+        $("#punchActionSubmit")
+            .text(`確認${verb}`)
+            .toggleClass("btn-danger", kind === "delete")
+            .toggleClass("btn-success", kind === "restore");
+        $("#punchActionReason").val("");
+        $("#punchActionForm").removeClass("d-none");
+        $("#punchActionReason").trigger("focus");
+    }
+
+    async function submitPunchAction() {
+        if (punchBusy || !punchTarget || !punchAction) return;
+        const reason = String($("#punchActionReason").val() || "").trim();
+        const verb = punchAction.kind === "restore" ? "復原" : "刪除";
+        if (!reason) {
+            alert(`請填寫${verb}原因`);
+            return;
+        }
+        if (!window.confirm(`確定要${verb} ${punchTarget.name} ${punchTarget.date} 的第 ${punchAction.num} 筆打卡紀錄嗎？`)) return;
+        const target = punchTarget;
+        const action = punchAction;
+        punchBusy = true;
+        $("#punchActionSubmit").prop("disabled", true);
+        try {
+            const resp = await fetch(`${apiBase}/api/clockin/punch/${action.kind}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({
+                    account: userId,
+                    cookie: sessionKey,
+                    id: target.id,
+                    date: target.date,
+                    num: Number(action.num),
+                    reason,
+                }),
+            });
+            let data = {};
+            try {
+                data = await resp.json();
+            } catch (error) {
+                data = {};
+            }
+            if (!resp.ok) {
+                alert(data.message || (resp.status === 403 ? "沒有權限" : `${verb}失敗`));
+                return;
+            }
+            hidePunchForm();
+            await refreshPunches();
+            await renderCurrent();
+        } catch (error) {
+            console.error(error);
+            alert(`${verb}失敗`);
+        } finally {
+            punchBusy = false;
+            $("#punchActionSubmit").prop("disabled", false);
+        }
+    }
+
     async function onPeriodChange() {
         const token = ++periodToken;
         updateDayOptions();
@@ -548,6 +712,29 @@ $(function () {
     $("#calendarGrid").on("click", ".record-download-btn", function () {
         if (this.disabled) return;
         downloadPersonal($(this).attr("data-id") || "", $(this).attr("data-name") || "");
+    });
+    $("#calendarGrid").on("click", ".record-punch-btn", function () {
+        const button = $(this);
+        openPunches({
+            id: button.attr("data-id") || "",
+            name: button.attr("data-name") || "",
+            date: button.attr("data-date") || "",
+        });
+    });
+    $("#punchList").on("click", ".punch-delete-btn", function () {
+        showPunchForm("delete", $(this));
+    });
+    $("#punchList").on("click", ".punch-restore-btn", function () {
+        showPunchForm("restore", $(this));
+    });
+    $("#punchActionCancel").on("click", hidePunchForm);
+    $("#punchActionForm").on("submit", (event) => {
+        event.preventDefault();
+        submitPunchAction();
+    });
+    document.getElementById("punchModal").addEventListener("hidden.bs.modal", () => {
+        punchTarget = null;
+        hidePunchForm();
     });
     $("#clockinEditForm").on("submit", (event) => {
         event.preventDefault();
