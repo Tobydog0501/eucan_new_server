@@ -1,0 +1,14 @@
+# Test-site frontend. The pages hardcode https://eucan.ddns.net:3000 as the API;
+# rewrite it so the test UI can never call the production backend.
+#   docker build --build-arg API_ORIGIN=http://<test-host> -f Dockerfile_test .
+FROM nginx:1.31.9
+
+ARG API_ORIGIN=http://localhost
+
+COPY . /usr/share/nginx/html/
+RUN find /usr/share/nginx/html/ -type f \( -name '*.js' -o -name '*.html' \) \
+        -exec sed -i "s|https://eucan.ddns.net|${API_ORIGIN}|g" {} + \
+    && ! grep -rl --include='*.js' --include='*.html' 'eucan.ddns.net' /usr/share/nginx/html/
+
+RUN rm /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/

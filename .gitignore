@@ -21,3 +21,4 @@ docs
 CONTEXT.md
 backend/.test-build
 backend/migrate.js
+testenv
