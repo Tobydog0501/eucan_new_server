@@ -9,6 +9,7 @@ import { check_working_day, main as generateCalendarExcel } from './plugins/dayo
 import { startArchiveSchedule } from './plugins/archive_schedule';
 import { aggregateDay, ClockEdit, decideEdit, isRealDate, taipeiToday } from './plugins/clockin_sheet';
 import { personalClockinPdf, readMasterClockinPdf } from './plugins/clockin_archive';
+import { onDownloadDone } from './plugins/http_util';
 import path from 'path';
 import fs from 'fs';
 
@@ -16,7 +17,7 @@ const log = new logger(`./logs/${new Date().toISOString().split('T')[0]}.log`);
 const sqlPlugin: sql = new sql();
 const mailers = new mailer();
 const app: Express = express();
-const PORT: number = 3000;
+const PORT: number = parseInt(process.env.PORT || '3000', 10);
 
 app.use(bodyParser.urlencoded({
   extended: true
@@ -106,14 +107,31 @@ posts.forEach(v => {
       res.sendStatus(400);
       return;
     }
-    try {
-      utils(req, res);
-    } catch (e) {
-      log.logFormat((e as string), new Date());
-      res.sendStatus(500);
-    }
+    // Handlers may be sync or async; route both thrown errors and rejected
+    // promises to a 500 instead of letting a rejection take the process down.
+    Promise.resolve()
+      .then(() => utils(req, res))
+      .catch((e: unknown) => {
+        log.logFormat(`POST /${v} failed: ${errorText(e)}`, new Date());
+        if (!res.headersSent) {
+          res.sendStatus(500);
+        }
+      });
   });
 })
+
+// Last line of defence: log stray rejections (e.g. a fire-and-forget mail send)
+// rather than crashing every user's session.
+process.on('unhandledRejection', (reason: unknown) => {
+  log.logFormat(`Unhandled promise rejection: ${errorText(reason)}`, new Date());
+});
+
+function errorText(e: unknown): string {
+  if (e instanceof Error) {
+    return e.stack || e.message;
+  }
+  return String(e);
+}
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}/`);
@@ -604,12 +622,7 @@ app.get('/api/calendar/export', async (req: Request, res: Response) => {
 
     await generateCalendarExcel(year, month, sqlPlugin);
     const filePath = `/app/calendars/${year}-${month}calendar.xlsx`;
-    res.download(filePath, `${year}-${month}calendar.xlsx`, (err) => {
-      if (err) {
-        log.logFormat(`Failed to send calendar file: ${String(err)}`);
-        res.sendStatus(500);
-      }
-    });
+    res.download(filePath, `${year}-${month}calendar.xlsx`, onDownloadDone(res, log, 'calendar file'));
   } catch (e) {
     log.logFormat((e as string), new Date());
     res.sendStatus(500);

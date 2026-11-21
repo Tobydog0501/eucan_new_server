@@ -4,6 +4,7 @@ import { mailer } from "../plugins/mailer";
 import logger from "../plugins/logger";
 import { sql } from "../plugins/sql";
 import { caculateTime } from "../plugins/dayoff_calculate";
+import { validRange, validReason, validTime } from "../plugins/leave_input";
 import { dayofftype } from "../types/types";
 
 const leaveTypes: dayofftype = {
@@ -44,13 +45,17 @@ module.exports = async function utils(sqlPlugin: sql, log: logger, mailer: maile
     return;
   }
 
-  if (String(reason).replace(/\ /g, "").length == 0) {
+  if (typeof account !== "string" || typeof cookie !== "string" || !validReason(reason)) {
     res.sendStatus(400);
     return;
   }
 
   if (!(validTime(start) && validTime(end))) {
     res.sendStatus(403);
+    return;
+  }
+  if (!validRange(start, end, { nearYearsOnly: true }).ok) {
+    res.sendStatus(400);
     return;
   }
 
@@ -115,18 +120,4 @@ module.exports = async function utils(sqlPlugin: sql, log: logger, mailer: maile
     success,
     failed
   });
-}
-
-function validTime(time: string): boolean {
-  const T = time.split(" ")[1].split(":");
-  if (8 <= parseInt(T[0]) && parseInt(T[0]) <= 17) {
-    if (T[0] == "08" && T[1] == "00") {
-      return false;
-    }
-    if (T[1] != "00" && T[1] != "30") {
-      return false;
-    }
-    return true;
-  }
-  return false;
 }

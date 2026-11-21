@@ -19,3 +19,4 @@ nginx/acme
 .scratch
 docs
 CONTEXT.md
+backend/.test-build

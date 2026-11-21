@@ -4,6 +4,7 @@ import { mailer } from "../plugins/mailer";
 import logger from "../plugins/logger";
 import { sql } from "../plugins/sql";
 import { caculateTime } from "../plugins/dayoff_calculate";
+import { validRange, validReason, validTime } from "../plugins/leave_input";
 import { dayofftype } from "../types/types";
 
 
@@ -40,7 +41,7 @@ module.exports = async function utils(sqlPlugin: sql, log: logger, mailer: maile
     return;
   }
 
-  if (dataReceived["reason"].replace(/\ /g, "").length == 0) {
+  if (typeof account !== "string" || typeof cookie !== "string" || !validReason(reason)) {
     res.sendStatus(400);
     return;
   }
@@ -49,19 +50,24 @@ module.exports = async function utils(sqlPlugin: sql, log: logger, mailer: maile
     res.sendStatus(403);
     return;
   }
-  const totalTime = await caculateTime(start, end);
+  if (!validRange(start, end, { nearYearsOnly: true }).ok) {
+    res.sendStatus(400);
+    return;
+  }
 
+  // Authenticate before any work that may load or fetch calendar data.
+  let ret1 = sqlPlugin.checkHash(account, cookie);
+  if (ret1 == null) {
+    res.sendStatus(403);
+    return;
+  }
   const permission = sqlPlugin.getPermission(account);
   if (permission === null) {
     res.sendStatus(403);
     return;
   }
 
-  let ret1 = sqlPlugin.checkHash(account, cookie);
-  if (ret1 == null) {
-    res.sendStatus(403);
-    return;
-  }
+  const totalTime = await caculateTime(start, end);
   const ret = await sqlPlugin.newRequest(account, type, start, end, totalTime, reason);
   if (ret == null) {
     res.sendStatus(403);
@@ -79,23 +85,7 @@ module.exports = async function utils(sqlPlugin: sql, log: logger, mailer: maile
   } else {
     var man = ["jeff@eucan.com.tw", "catherine@eucan.com.tw"]
     mailer.send(man[(ret["mgroup"] as number)], "請假審核要求", `您好，\n員工 ${ret["name"]}於剛才發送請假要求。\n詳細內容請登入請假系統審核。\n\n<此信為系統自動發送，請勿回覆>`)
+      .catch((e) => log.logFormat(`Failed to send leave request mail for ${account}: ${String(e)}`));
     res.send("已向主管提出請假申請，請點擊上一頁回到請假頁面")
-  }
-}
-
-function validTime(time: string): boolean {
-  const T = time.split(" ")[1].split(":");
-  // if(0<=date.getHours()<=8)
-  if (8 <= parseInt(T[0]) && parseInt(T[0]) <= 17) {
-    if (T[0] == '08' && T[1] == "00") {
-      return false;
-    }
-    if (T[1] != "00" && T[1] != "30") {
-      return false;
-    } else {
-      return true;
-    }
-  } else {
-    return false;
   }
 }

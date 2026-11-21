@@ -4,6 +4,7 @@ import { mailer } from "../plugins/mailer";
 import logger from "../plugins/logger";
 import { sql } from "../plugins/sql";
 import { digit } from "../types/types";
+import { canEdit } from "../plugins/account_rules";
 
 
 module.exports = function utils(sqlPlugin: sql, log: logger, mailer: mailer, req: Request, res: Response): void {
@@ -28,9 +29,36 @@ module.exports = function utils(sqlPlugin: sql, log: logger, mailer: mailer, req
     return;
   }
 
+  const textFields = [account, cookie, user, pwd, email, name, joinTime, type];
+  const requiredText = [account, cookie, user, pwd, name, joinTime, type];
+  if (textFields.some((v) => typeof v !== "string") || requiredText.some((v) => v.length === 0)) {
+    res.sendStatus(400);
+    return;
+  }
+  if ([status, mgroup, permit].some((v) => typeof v !== "string" && typeof v !== "number")) {
+    res.sendStatus(400);
+    return;
+  }
+  if (leaveDate != null && typeof leaveDate !== "string") {
+    res.sendStatus(400);
+    return;
+  }
+
   let ret = sqlPlugin.checkHash(account, cookie);
   if (ret == null || ret["accountType"] != "admin") {
     res.sendStatus(403);
+    return;
+  }
+
+  const target = sqlPlugin.getUser(user);
+  if (target == null) {
+    res.sendStatus(404);
+    return;
+  }
+  const decision = canEdit(account, { id: target.id, type: target.type }, { type, status: `${status}` });
+  if (!decision.ok) {
+    log.logFormat(`${account} was refused editing account ${user}: ${decision.reason}.`);
+    res.sendStatus(decision.status);
     return;
   }
 
