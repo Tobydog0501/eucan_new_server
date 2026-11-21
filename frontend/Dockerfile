@@ -1,4 +1,4 @@
-FROM nginx:1.31.9
+FROM nginx:1.31.9@sha256:84f7876d21d154885f99554d7ae325d8c2213f9169726ea7ab60642f2573a787
 
 # Optional: pin the backend API base, e.g. --build-arg API_BASE=https://api.example:3000
 # Left empty (the default), pages call port 3000 on the host they were loaded
