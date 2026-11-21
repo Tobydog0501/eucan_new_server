@@ -18,6 +18,10 @@ services:
       - "8000:8000"
     volumes:
       - "./testenv/frontend-logs:/var/log/nginx"
+      # Static site plus a same-origin proxy to the backend (see the file).
+      - "./frontend/nginx.test.conf:/etc/nginx/conf.d/nginx.conf:ro"
+    depends_on:
+      - backend
   backend:
     build:
       context: ./backend

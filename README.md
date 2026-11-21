@@ -89,6 +89,8 @@ TEST_HOST=<測試主機名稱> docker compose -p eucan-test -f docker-compose-te
 
 若後端不在同一台主機或不是 3000 port，build 時用 `API_BASE` 指定（格式 `http(s)://host[:port]`）。`frontend/Dockerfile_test` 另外會在 build 時檢查，只要還有任何頁面提到正式網域就 build 失敗。
 
+前端容器用 `frontend/nginx.test.conf`（`docker-compose-test.yml` 掛載）：除了靜態頁面，也把 `/api/*`、根層級的 POST 路由和 `/healthz` 反代到後端，所以測試站可以只用一個網域（`API_BASE` 設成該網域即可），後端 3000 port 不必對外。上傳上限和正式站一樣是 2G。後端新增根層級路由時，要一併加進這個檔案，`backend/test/nginx_test_conf.test.js` 會檢查。
+
 ### 環境變數
 
 只列名稱與用途；值請依測試主機設定，不要沿用正式站的值。
