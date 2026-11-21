@@ -1,0 +1,2 @@
+# Run by sh inside the image build; CRLF would break it.
+*.sh text eol=lf

@@ -138,6 +138,11 @@ export async function findMissedPunches(sqlPlugin: sql, date: string): Promise<M
   return missed;
 }
 
+/** mailer.send() returns { blocked: true } when the allowlist removed every recipient. */
+function isBlocked(result: unknown): boolean {
+  return typeof result === 'object' && result !== null && (result as { blocked?: unknown }).blocked === true;
+}
+
 export type Sender = (to: string, subject: string, text: string) => Promise<unknown>;
 
 export type CheckReport = {
@@ -226,15 +231,20 @@ export async function runMissedPunchCheck(
       }
       const body = missedPunchBody(person.name, date, config.link);
       try {
+        let blocked = false;
         if (channel === 'smtp') {
           if (!options.sender) throw new Error('no sender configured');
-          await options.sender(person.email, MISSED_PUNCH_SUBJECT, body);
+          const result = await options.sender(person.email, MISSED_PUNCH_SUBJECT, body);
+          blocked = isBlocked(result);
         } else {
           writeOutbox(config.outboxDir, date, person.id, person.email, MISSED_PUNCH_SUBJECT, body);
         }
+        // A recipient dropped by the test-site allowlist counts as handled, so it is not retried.
         sqlPlugin.finishMissedPunchNotice(person.id, date, 'sent');
         report.notified.push({ id: person.id, channel });
-        log.logFormat(`Missed-punch notice ${date} for ${person.id} (${person.kind}): ${channel === 'smtp' ? 'sent' : 'written to outbox (sending is off)'}.`);
+        const outcome = channel === 'outbox' ? 'written to outbox (sending is off)'
+          : blocked ? 'not delivered (recipient not on the test-site allowlist)' : 'sent';
+        log.logFormat(`Missed-punch notice ${date} for ${person.id} (${person.kind}): ${outcome}.`);
       } catch (e) {
         sqlPlugin.finishMissedPunchNotice(person.id, date, 'failed');
         report.failed.push(person.id);

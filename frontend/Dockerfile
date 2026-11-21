@@ -14,10 +14,17 @@ RUN if [ -n "$API_BASE" ]; then \
         && grep -q "EUCAN_API_BASE_CONFIGURED = '${API_BASE}'" /usr/share/nginx/html/js/cookieOperation.js; \
     fi
 
+# Optional: point the "cloud history" links on admin/calendar.html and
+# admin/record.html elsewhere. Empty (the default) keeps the folders built into
+# the pages, as before.
+ARG CLOUD_HISTORY_URL_CALENDAR=
+ARG CLOUD_HISTORY_URL_RECORD=
+RUN sh /usr/share/nginx/html/cloud_links.sh /usr/share/nginx/html keep
+
 # Remove the default nginx.conf
 # nginx.conf is needed in the build context for the COPY below, but must not
-# be served from the web root.
-RUN rm /etc/nginx/conf.d/default.conf /usr/share/nginx/html/nginx.conf
+# be served from the web root; cloud_links.sh is a build file.
+RUN rm /etc/nginx/conf.d/default.conf /usr/share/nginx/html/nginx.conf /usr/share/nginx/html/cloud_links.sh
 
 # # Replace with our own nginx.conf
 COPY nginx.conf /etc/nginx/conf.d/
