@@ -116,6 +116,11 @@ test('missed-punch notice: text is exactly the given wording; config is off by d
     assert.equal(job.noticeConfig({ MISSED_PUNCH_MAIL_ENABLED: '1' }).realSend, true);
     assert.equal(job.noticeConfig({ MISSED_PUNCH_MAIL_ENABLED: 'true', MAIL_TEST_MODE: '1' }).realSend, false);
     assert.equal(job.noticeConfig({ MISSED_PUNCH_MAIL_ENABLED: '0' }).realSend, false);
+    // MAIL_DISABLED=1 (#33's site-wide switch) overrides MISSED_PUNCH_MAIL_ENABLED.
+    assert.equal(job.noticeConfig({ MISSED_PUNCH_MAIL_ENABLED: '1', MAIL_DISABLED: '1' }).realSend, false);
+    assert.equal(job.noticeConfig({ MISSED_PUNCH_MAIL_ENABLED: '1', MAIL_TEST_MODE: '1', MAIL_DISABLED: '1' }).realSend, false);
+    assert.equal(job.noticeConfig({ MISSED_PUNCH_MAIL_ENABLED: '1', MAIL_DISABLED: '0' }).realSend, true);
+    assert.equal(job.noticeConfig({ MAIL_DISABLED: '1' }).realSend, false);
     assert.equal(job.noticeConfig({ APP_BASE_URL: 'https://test.example.invalid/' }).link, LINK);
 
     // 00:30 in Taipei on 3 March checks 2 March.
@@ -248,6 +253,66 @@ test('missed-punch notice: sending on -> mails through SMTP once; a failed send 
     }
     await smtpDown.close();
     await smtpUp.close();
+  }
+});
+
+test('missed-punch notice: MAIL_DISABLED=1 in the process -> outbox only, even with a config that asks to send; no SMTP connection', async () => {
+  const smtp = await startFakeSmtp('accept');
+  const saved = { SMTP_SERVER: process.env.SMTP_SERVER, SMTP_PORT: process.env.SMTP_PORT, USER_MAIL: process.env.USER_MAIL, USER_PWD: process.env.USER_PWD, MAIL_DISABLED: process.env.MAIL_DISABLED };
+  try {
+    process.env.SMTP_SERVER = '127.0.0.1';
+    process.env.SMTP_PORT = String(smtp.port);
+    process.env.USER_MAIL = 'system@example.invalid';
+    process.env.USER_PWD = 'fixture-smtp';
+    await withJob(async ({ cwd, file, db, job }) => {
+      seedDay(file, TUESDAY);
+      const outbox = path.join(cwd, 'logs', 'mail-outbox');
+      // Built without MAIL_DISABLED, so it asks for real sending...
+      const config = job.noticeConfig({ MISSED_PUNCH_MAIL_ENABLED: '1', MAIL_OUTBOX_DIR: outbox, APP_BASE_URL: 'https://test.example.invalid' });
+      assert.equal(config.realSend, true);
+      // ...but the running process has the site-wide switch on.
+      process.env.MAIL_DISABLED = '1';
+      const { mailer } = require(path.join(require('../testlib/harness').BUILD_DIR, 'plugins', 'mailer.js'));
+      const real = new mailer();
+      let senderCalls = 0;
+      const sender = (to, s, b) => { senderCalls++; return real.send(to, s, b); };
+      const log = capture();
+
+      const report = await job.runMissedPunchCheck(db, log, { date: TUESDAY, sender, config });
+      assert.deepEqual(report.notified.map((n) => [n.id, n.channel]).sort(), [['emp1', 'outbox'], ['emp3', 'outbox'], ['emp9', 'outbox']]);
+      assert.deepEqual(report.failed, []);
+      assert.ok(notices(file).every((n) => n.channel === 'outbox' && n.status === 'sent'));
+      // The outbox still gets the exact text.
+      assert.equal(fs.readFileSync(path.join(outbox, `${TUESDAY}_emp3.txt`), 'utf8'),
+        `To: emp3@example.invalid\nSubject: ${SUBJECT}\n\n${expectedBody('Fixture emp3', TUESDAY, LINK)}\n`);
+
+      // And the mailer itself refuses too, if anything did call it directly.
+      assert.deepEqual(await real.send('emp3@example.invalid', SUBJECT, 'x'), { disabled: true });
+
+      await new Promise((r) => setTimeout(r, 300));
+      assert.equal(senderCalls, 0);
+      assert.equal(smtp.connections(), 0);
+      assert.equal(smtp.messages.length, 0);
+    });
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+    await smtp.close();
+  }
+});
+
+test('missed-punch notice: backend with MAIL_DISABLED=1 and MISSED_PUNCH_MAIL_ENABLED=1 opens no SMTP connection at start-up', async () => {
+  const server = await startServer({ env: { MAIL_DISABLED: '1', MISSED_PUNCH_MAIL_ENABLED: '1' } });
+  try {
+    await server.waitForOutput(/Missed-punch check \d{4}-\d{2}-\d{2}: /);
+    await new Promise((r) => setTimeout(r, 500));
+    assert.ok(!/notified via smtp|: sent\./.test(server.output()), server.output());
+    assert.equal(server.smtp.connections(), 0);
+    assert.equal(server.smtp.messages.length, 0);
+    assert.equal(await server.alive(), true);
+  } finally {
+    await server.stop();
   }
 });
 

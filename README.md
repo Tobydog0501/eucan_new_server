@@ -100,7 +100,7 @@ TEST_HOST=<測試主機名稱> docker compose -p eucan-test -f docker-compose-te
 | `API_BASE` | 前端 build arg（選填） | 固定前端呼叫的後端位址；未設定時用頁面所在主機的 3000 port |
 | `PORT` | 後端 | 後端 listen 的 port |
 | `CORS_ORIGIN` | 後端 | 允許的前端來源；未設定時為正式網域 |
-| `MAIL_DISABLED` | 後端 | 設為 `1` 時完全不建立 SMTP 連線、不寄信（啟動時的 verify 也略過），只在 log 印出主旨 |
+| `MAIL_DISABLED` | 後端 | 設為 `1` 時完全不建立 SMTP 連線、不寄信（啟動時的 verify 也略過），只在 log 印出主旨；未打卡通知即使 `MISSED_PUNCH_MAIL_ENABLED=1` 也不寄，改寫入 outbox（見「未打卡通知信」） |
 | `LEAVE_MANAGER_MAILS` | 後端 | 請假審核通知的收件人，逗號分隔，依員工的 mgroup（0 起算）選用；未設定時沿用程式內建名單 |
 | `SMTP_SERVER`、`SMTP_PORT` | 後端 | SMTP 主機與 port；測試站指到不存在的本機位址，或只收不轉寄的郵件攔截器 |
 | `USER_MAIL`、`USER_PWD` | 後端 | SMTP 帳密與寄件者；測試站填假值 |
@@ -136,8 +136,9 @@ root 登入時，後端會把 root 的 2FA 密鑰和驗證碼送到 `TOTP_VALIDA
 
 | 環境變數 | 預設 | 說明 |
 | --- | --- | --- |
-| `MISSED_PUNCH_MAIL_ENABLED` | 關 | 設為 `1`/`true` 才會真的透過 SMTP 寄出 |
+| `MISSED_PUNCH_MAIL_ENABLED` | 關 | 設為 `1`/`true`，且 `MAIL_TEST_MODE` 關、`MAIL_DISABLED` 不是 `1`，才會真的透過 SMTP 寄出 |
 | `MAIL_TEST_MODE` | 關 | 設為 `1` 時即使上面開啟也不寄，只寫 outbox（測試站請設） |
+| `MAIL_DISABLED` | 關 | 全站不寄信開關（見「測試站設定」）；設為 `1` 時效果同 `MAIL_TEST_MODE`：不寄、只寫 outbox，優先於 `MISSED_PUNCH_MAIL_ENABLED` |
 | `MAIL_OUTBOX_DIR` | `./logs/mail-outbox` | 不寄時信件寫到這裡：`{日期}_{帳號id}.txt`，內含收件者、主旨、內文與連結；目錄 0700、檔案 0600 |
 | `APP_BASE_URL` | 未設 | 連結的網站網址，例如測試站 `https://test.example`；未設時連結為站內路徑 `/employee/makeup.html` |
 | `MISSED_PUNCH_CHECK` | 開 | 設為 `0` 關閉整個排程 |

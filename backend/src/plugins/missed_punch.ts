@@ -9,16 +9,16 @@
  *    (national holidays and make-up workdays included); approved leave that
  *    covers 08:30 / 17:30 excuses the clock-in / clock-out.
  *  - At most one notice per person and day (table missed_punch_notice).
- *  - Nothing is mailed unless MISSED_PUNCH_MAIL_ENABLED is on and
- *    MAIL_TEST_MODE is off. Otherwise the mail is written to a file in
- *    MAIL_OUTBOX_DIR (default ./logs/mail-outbox) so it can be checked.
+ *  - Nothing is mailed unless MISSED_PUNCH_MAIL_ENABLED is on, MAIL_TEST_MODE
+ *    is off and MAIL_DISABLED is not 1. Otherwise the mail is written to a
+ *    file in MAIL_OUTBOX_DIR (default ./logs/mail-outbox) so it can be checked.
  *  - Log lines carry only the internal account id, the date and the outcome.
  */
 import fs from 'fs';
 import path from 'path';
 import { sql } from './sql';
 import logger from './logger';
-import { mailer } from './mailer';
+import { mailer, mailDisabled } from './mailer';
 import { aggregateDay, ClockEdit, taipeiToday } from './clockin_sheet';
 import { check_working_day } from './dayoff_calendar';
 import { msUntilNextTaipeiMidnight } from './archive_schedule';
@@ -49,7 +49,7 @@ export function missedPunchBody(name: string, date: string, link: string): strin
 }
 
 export type NoticeConfig = {
-  /** True only when real SMTP sending is switched on and test mode is off. */
+  /** True only when real SMTP sending is switched on, test mode is off and MAIL_DISABLED is not 1. */
   realSend: boolean;
   outboxDir: string;
   link: string;
@@ -62,6 +62,7 @@ function isOn(value: string | undefined): boolean {
 /**
  *   MISSED_PUNCH_MAIL_ENABLED  1/true to really send (default: off)
  *   MAIL_TEST_MODE             1/true forces the outbox even when enabled
+ *   MAIL_DISABLED              1 forces the outbox too (the site-wide no-mail switch)
  *   MAIL_OUTBOX_DIR            where the outbox files go (default ./logs/mail-outbox)
  *   APP_BASE_URL               site origin for the link, e.g. https://test.example
  *                              (unset: the link is the site-relative path)
@@ -69,7 +70,7 @@ function isOn(value: string | undefined): boolean {
 export function noticeConfig(env: NodeJS.ProcessEnv = process.env): NoticeConfig {
   const base = (env.APP_BASE_URL || '').trim().replace(/\/+$/, '');
   return {
-    realSend: isOn(env.MISSED_PUNCH_MAIL_ENABLED) && !isOn(env.MAIL_TEST_MODE),
+    realSend: isOn(env.MISSED_PUNCH_MAIL_ENABLED) && !isOn(env.MAIL_TEST_MODE) && !mailDisabled(env),
     outboxDir: path.resolve((env.MAIL_OUTBOX_DIR || '').trim() || './logs/mail-outbox'),
     link: `${base}${MAKEUP_PAGE_PATH}`,
   };
@@ -211,7 +212,8 @@ export async function runMissedPunchCheck(
       return report;
     }
 
-    const channel: 'smtp' | 'outbox' = config.realSend ? 'smtp' : 'outbox';
+    // MAIL_DISABLED=1 in the running process wins even over a config that asks to send.
+    const channel: 'smtp' | 'outbox' = config.realSend && !mailDisabled() ? 'smtp' : 'outbox';
     for (const person of await findMissedPunches(sqlPlugin, date)) {
       if (!person.email) {
         report.noEmail.push(person.id);
