@@ -46,6 +46,12 @@ npm test     # 編譯到 .test-build/ 後跑 node --test
 | clockinrecord soft-delete columns | `clockinrecord` 新增 `deleted_at`、`deleted_by`、`delete_reason`（預設 NULL＝未刪除，舊資料全部維持有效） |
 | clockin_punch_audit table | 新增打卡刪除／復原的稽核表 |
 | clockinrecord (id, date) index | 新增一般索引（非 UNIQUE，舊資料若有重複也不會失敗） |
+| makeup_request table | 新增補登申請表（待審／核准／駁回） |
+| makeup_audit table | 新增補登申請的稽核表（送出、核准、駁回：誰、何時、原因） |
+| clockinrecord makeup_request_id column | `clockinrecord` 新增 `makeup_request_id`（預設 NULL＝一般打卡；有值＝由該筆補登申請核准產生） |
+| missed_punch_notice table | 新增未打卡通知的去重表（同一人同一天只寄一次） |
+
+步驟依上表順序執行（1–3 為打卡軟刪除，4–7 為未打卡通知與補登）；之後新增的步驟請接在最後。
 
 ## 刪除誤打的打卡紀錄
 
@@ -117,3 +123,33 @@ root 登入時，後端會把 root 的 2FA 密鑰和驗證碼送到 `TOTP_VALIDA
   ```
 
   這個服務會接受任何驗證碼，只能用在測試站；`SECRET` 仍維持假值。
+
+## 未打卡通知信
+
+後端內建排程：每天 00:00（Asia/Taipei）以及每次啟動時，檢查「前一天」的出勤，員工上班或下班其中一次沒打卡就寄一封「祐肯企業上下班未打卡系統通知」，信末附補登申請頁連結。程式在 `backend/src/plugins/missed_punch.ts`。
+
+- **誰會收到**：在職（status=1）、類型為 employee、當天已到職的員工。管理員帳號與 monitor 不檢查。
+- **不寄的情況**：行事曆（`api/office_calendar_*.json`，與請假系統同一份，含國定假日與補班日）標示為休假的日子；已核准的假單涵蓋 08:30 就不要求上班卡、涵蓋 17:30 就不要求下班卡（全天假兩者都不要求）；當天已有待審的補登申請。行事曆讀不到時整天跳過、不寄，並寫 log。
+- **怎麼算有打卡**：已軟刪除的打卡不算；管理員補正（clockin_edit）與核准的補登都算。
+- **去重**：`missed_punch_notice` 每人每天一筆；已寄出（或已寫入 outbox）就不再寄。寄送失敗會標記 failed，下次執行時重試。
+- **log**：只寫內部帳號 id、日期、類別與結果，不寫姓名、信箱或信件內容。
+
+| 環境變數 | 預設 | 說明 |
+| --- | --- | --- |
+| `MISSED_PUNCH_MAIL_ENABLED` | 關 | 設為 `1`/`true` 才會真的透過 SMTP 寄出 |
+| `MAIL_TEST_MODE` | 關 | 設為 `1` 時即使上面開啟也不寄，只寫 outbox（測試站請設） |
+| `MAIL_OUTBOX_DIR` | `./logs/mail-outbox` | 不寄時信件寫到這裡：`{日期}_{帳號id}.txt`，內含收件者、主旨、內文與連結；目錄 0700、檔案 0600 |
+| `APP_BASE_URL` | 未設 | 連結的網站網址，例如測試站 `https://test.example`；未設時連結為站內路徑 `/employee/makeup.html` |
+| `MISSED_PUNCH_CHECK` | 開 | 設為 `0` 關閉整個排程 |
+| `SMTP_SERVER`、`SMTP_PORT`、`USER_MAIL`、`USER_PWD` | — | 沿用既有寄信設定 |
+
+測試站核對方式：保持寄信關閉（或設 `MAIL_TEST_MODE=1`），隔天（或重啟後）到 `logs/mail-outbox/` 查看檔案，核對主旨、內文、收件者與連結。
+
+## 補登申請
+
+- **員工**：導覽列「補登申請」（`frontend/employee/makeup.html`）。申請人、部門、申請日期自動帶入；依未打卡類別只要求對應的實際時間；原因必填。送出後為「待審」，下方列表可看自己每筆申請的狀態（待審／核准／駁回）與審核說明，看不到別人的申請。
+- **主管／管理員**：「出勤 → 補登審核」（`frontend/admin/makeup.html`）核准或駁回（駁回需填原因），並可看每筆的稽核紀錄。權限與刪除打卡相同：管理員或內建帳號的申請只有 root 能審，任何人都不能審自己的申請。
+- **核准**才會在 `clockinrecord` 新增一筆打卡（`makeup_request_id` 指回申請，畫面標示「補登」），並計入打卡畫面、月總表、個人 PDF 等統計與匯出；待審或駁回不產生任何打卡。若該月總表已產生，核准後會自動重產。
+- 部門：帳號資料沒有部門欄位，目前以直屬主管組別（mgroup：JEFF／CAT，與員工資料管理頁相同）顯示。
+
+API：`/api/makeup/*`，詳見 `backend/conf/API.md`。
