@@ -50,7 +50,7 @@ module.exports = async function utils(sqlPlugin:sql,log:logger,mailer:mailer,req
             res.sendStatus(400);
             return;
         }
-        if(!sqlPlugin.credentialsValid(account, password, sessionCookie)){
+        if(!(await sqlPlugin.credentialsValid(account, password, sessionCookie))){
             res.sendStatus(403);
             return;
         }
@@ -60,7 +60,7 @@ module.exports = async function utils(sqlPlugin:sql,log:logger,mailer:mailer,req
         }
     }
 
-    let ret = sqlPlugin.login(account,password,sessionCookie);
+    let ret = await sqlPlugin.login(account,password,sessionCookie);
     if(ret.msg=="success"){
         res.json(ret);
     }else{
