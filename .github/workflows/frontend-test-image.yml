@@ -1,0 +1,94 @@
+name: Frontend test image
+
+# Builds frontend/Dockerfile_test the way the test site does, so its guard
+# (the build fails if any page still names the production host) runs on every
+# PR instead of only at deploy time.
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - "docker-compose-test.yml"
+      - ".github/workflows/frontend-test-image.yml"
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "docker-compose-test.yml"
+      - ".github/workflows/frontend-test-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-test-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Already public in this repo (nginx/conf.d, docs); the guard looks for it.
+  PROD_HOST: eucan.ddns.net
+  API_BASE: https://test-site.example.invalid
+  IMAGE: eucan-frontend-test:ci
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build Dockerfile_test
+        run: docker build -f frontend/Dockerfile_test --build-arg "API_BASE=${API_BASE}" -t "${IMAGE}" frontend
+
+      - name: Check the built web root
+        run: |
+          set -eu
+          root=/usr/share/nginx/html
+          # No page names the production host.
+          if docker run --rm "${IMAGE}" grep -rl --include='*.js' --include='*.html' "${PROD_HOST}" "${root}"; then
+            echo "::error::production host found in the files above"; exit 1
+          fi
+          # The API base was baked in.
+          docker run --rm "${IMAGE}" grep -q "EUCAN_API_BASE_CONFIGURED = '${API_BASE}'" "${root}/js/cookieOperation.js"
+          # Build and config files are not in the web root.
+          for f in Dockerfile Dockerfile_dev Dockerfile_test nginx.conf .dockerignore; do
+            if docker run --rm "${IMAGE}" test -e "${root}/${f}"; then
+              echo "::error::${f} is in the web root"; exit 1
+            fi
+          done
+
+      - name: Serve pages
+        run: |
+          set -eu
+          docker run -d --name fe -p 8000:8000 "${IMAGE}"
+          for i in $(seq 1 30); do curl -fs -o /dev/null http://127.0.0.1:8000/ && break; sleep 1; done
+          for p in / /index.html /employee/makeup.html /admin/makeup.html; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8000${p}")
+            echo "${p} ${code}"; [ "${code}" = 200 ]
+          done
+          for p in /Dockerfile /nginx.conf; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8000${p}")
+            echo "${p} ${code}"; [ "${code}" = 404 ]
+          done
+
+      - name: The guard rejects a page that names the production host
+        run: |
+          set -eu
+          ctx="${RUNNER_TEMP}/frontend-guard"
+          cp -r frontend "${ctx}"
+          echo "var leaked = 'https://${PROD_HOST}:3000/login';" >> "${ctx}/js/index.js"
+          if docker build -q -f "${ctx}/Dockerfile_test" --build-arg "API_BASE=${API_BASE}" "${ctx}"; then
+            echo "::error::Dockerfile_test built although a page names the production host"; exit 1
+          fi
+          echo "build failed as expected"
+
+      - name: The build rejects a malformed API_BASE
+        run: |
+          set -eu
+          if docker build -q -f frontend/Dockerfile_test --build-arg "API_BASE=https://example.invalid/with/path" frontend; then
+            echo "::error::Dockerfile_test accepted an API_BASE with a path"; exit 1
+          fi
+          echo "build failed as expected"

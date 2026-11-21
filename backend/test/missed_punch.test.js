@@ -327,3 +327,54 @@ test('missed-punch notice: the backend schedules the check at start-up, with sen
     await server.stop();
   }
 });
+
+test('missed-punch notice on a test site: allowlisted people get the [TEST] mail, others are dropped, recorded once and not retried', async () => {
+  const smtp = await startFakeSmtp('accept');
+  const keys = ['SMTP_SERVER', 'SMTP_PORT', 'USER_MAIL', 'USER_PWD', 'SITE_ENV', 'MAIL_ALLOWED_RECIPIENTS', 'MAIL_SUBJECT_PREFIX'];
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  try {
+    process.env.SMTP_SERVER = '127.0.0.1';
+    process.env.SMTP_PORT = String(smtp.port);
+    // Fake credentials for the fake server (same as the harness uses).
+    process.env.USER_MAIL = 'system@example.invalid';
+    process.env.USER_PWD = 'fixture-smtp';
+    process.env.SITE_ENV = 'test';
+    process.env.MAIL_ALLOWED_RECIPIENTS = 'emp3@example.invalid';
+    delete process.env.MAIL_SUBJECT_PREFIX;
+    await withJob(async ({ file, db, job }) => {
+      seedDay(file, MONDAY);
+      const { mailer } = require(path.join(require('../testlib/harness').BUILD_DIR, 'plugins', 'mailer.js'));
+      const real = new mailer();
+      const sender = (to, s, b) => real.send(to, s, b);
+      const config = { ...job.noticeConfig({ APP_BASE_URL: 'https://test.example.invalid' }), realSend: true };
+      const log = capture();
+
+      const report = await job.runMissedPunchCheck(db, log, { date: MONDAY, sender, config });
+      assert.deepEqual(report.failed, []);
+      assert.deepEqual(report.notified.map((n) => n.id).sort(), ['emp1', 'emp3', 'emp9']);
+      const msgs = await smtp.waitForMessages(1);
+      await new Promise((r) => setTimeout(r, 300));
+      assert.equal(smtp.messages.length, 1, 'only the allowlisted person is mailed');
+      assert.match(msgs[0], /^To: emp3@example\.invalid$/m);
+      const subject = (msgs[0].match(/^Subject: (.*)$/m) || [])[1] || '';
+      const decoded = subject.replace(/=\?utf-8\?b\?([^?]*)\?=/gi, (_, b) => Buffer.from(b, 'base64').toString('utf8'));
+      assert.ok(decoded.startsWith('[TEST] '), decoded);
+
+      const ours = log.lines.filter((l) => l.startsWith('Missed-punch notice'));
+      assert.ok(ours.some((l) => l.includes('emp1') && l.includes('not delivered')), ours.join('\n'));
+      assert.ok(ours.some((l) => l.includes('emp3') && /: sent\.$/.test(l)), ours.join('\n'));
+      for (const line of ours) assert.ok(!line.includes('@'), line);
+
+      // Dropped notices are recorded, so the next run does not try again.
+      const again = await job.runMissedPunchCheck(db, log, { date: MONDAY, sender, config });
+      assert.deepEqual(again.notified, []);
+      assert.equal(smtp.messages.length, 1);
+    });
+  } finally {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    await smtp.close();
+  }
+});

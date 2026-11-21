@@ -2,6 +2,7 @@
 import nodemailer,{Transporter} from 'nodemailer';
 import dotenv from 'dotenv';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
+import { filterRecipients, prefixedSubject } from './mail_policy';
 // import SMTPConnection from 'nodemailer/lib/smtp-connection';
 // const dotenv = require('dotenv');
 dotenv.config();
@@ -85,10 +86,19 @@ export class mailer{
             console.log(`[MAIL_DISABLED] not sent: subject="${title}"`);
             return { disabled: true };
         }
+        // Test sites deliver only to MAIL_ALLOWED_RECIPIENTS (see mail_policy.ts).
+        // Dropped recipients are logged by count only, never by address.
+        const recipients = filterRecipients(`${mail}`);
+        if (recipients.dropped > 0) {
+            console.log(`[MAIL_ALLOWLIST] dropped ${recipients.dropped} recipient(s) not on the allowlist`);
+        }
+        if (recipients.allowed.length === 0) {
+            return { blocked: true, dropped: recipients.dropped };
+        }
         var message = {
             from: `"祐肯企業請假系統訊息" <${process.env.USER_MAIL}>`, // listed in rfc822 message header
-            to: `${mail}`, // listed in rfc822 message header
-            subject: title,
+            to: recipients.restricted ? recipients.allowed.join(", ") : `${mail}`, // listed in rfc822 message header
+            subject: prefixedSubject(title),
             text: text,
         };
         const ret = await this.transporter.sendMail(message);

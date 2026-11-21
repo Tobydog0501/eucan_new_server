@@ -27,11 +27,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Same Node as the backend image (backend/Dockerfile).
+          node-version: 20.20.2
 
-      # package-lock.json is not committed, so `npm ci` cannot be used.
+      # Exactly the versions in the committed package-lock.json.
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Run tests
         run: |
