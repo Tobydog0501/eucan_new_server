@@ -1021,6 +1021,17 @@ export class sql {
     ).all(date, date) as Array<{ id: string, start: string, end: string }>;
   }
 
+  /** One person's leave tickets in the given states (0 pending, 1 approved) that touch `date`. */
+  leavesOnDate(date: string, id: string, states: number[]): Array<{ id: string, start: string, end: string }> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !states.length) {
+      return [];
+    }
+    return this.login_db.prepare(
+      `SELECT id, start, end FROM requestquery
+       WHERE id = ? AND state IN (${states.map(() => '?').join(', ')}) AND date(start) <= ? AND date(end) >= ?;`
+    ).all(id, ...states, date, date) as Array<{ id: string, start: string, end: string }>;
+  }
+
   // ---- Make-up punch (補登) requests ------------------------------------
 
   /**
@@ -1061,6 +1072,14 @@ export class sql {
       return this.login_db.prepare(`SELECT * FROM makeup_request WHERE state = ? ORDER BY request_id ${order};`).all(state) as MakeupRequestRow[];
     }
     return this.login_db.prepare(`SELECT * FROM makeup_request ORDER BY request_id DESC;`).all() as MakeupRequestRow[];
+  }
+
+  /** Kinds of one person's pending or approved make-up requests for `date`. */
+  activeMakeupKindsOn(id: string, date: string): MakeupKind[] {
+    const rows = this.login_db.prepare(
+      `SELECT kind FROM makeup_request WHERE id = ? AND missed_date = ? AND state IN ('pending', 'approved');`
+    ).all(id, date) as Array<{ kind: MakeupKind }>;
+    return rows.map((row) => row.kind);
   }
 
   /** Ids of people with a pending make-up request for `date`. */

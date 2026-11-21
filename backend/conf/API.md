@@ -347,34 +347,32 @@ Soft-delete one punch (admins; punches of admin or built-in accounts: root only)
 
 ---
 
-### 15. Make-up Punch Requests (補登申請) — employee side
+### 15. Make-up Punch Requests (補打卡申請) — employee side
 
 **Endpoints:**
 ![GET](https://img.shields.io/badge/GET-0052CC?style=flat-square&logo=appveyor&logoColor=white) `/api/makeup/mine`
 ![POST](https://img.shields.io/badge/POST-FF4136?style=flat-square&logo=appveyor&logoColor=white) `/api/makeup/apply`
 
 **Description:**  
-`mine` returns the caller's own requests only (no parameter selects anybody else), plus the values the form fills in by itself (`applicant.name`, `applicant.department`, `today`). `apply` files a pending request; it never creates a punch.
+`mine` returns the caller's own requests and missing punches only (no parameter selects anybody else). `missing` lists one card per missing half (clock-in or clock-out) on each working day of the last 31 days up to yesterday (Taipei), newest first, using the same detection as the missed-punch notice; pending leave excuses too, and halves with a pending or approved request are left out. `apply` files a pending request for one of those cards; it never creates a punch. Date and half must match a current card (otherwise 409); the time stored is the shift time of that half (08:30 / 17:30), and any time fields in the body are ignored. Name and department come from the account.
 
 **`apply` body:**
 ```json
 {
   "account": "string",
   "cookie": "string",
-  "date": "YYYY-MM-DD",   // Not later than today (Taipei).
-  "kind": "in" | "out" | "both",
-  "clockin": "HH:MM",     // Required for in / both, ignored for out.
-  "clockout": "HH:MM",    // Required for out / both, ignored for in. Later than clockin.
+  "date": "YYYY-MM-DD",   // The card's date (before today, Taipei).
+  "kind": "in" | "out",   // The card's half.
   "reason": "string"      // Required, at most 200 characters.
 }
 ```
 
 **Response:**
-- `mine` **200 OK**: `{ "applicant": { "name", "department" }, "today", "requests": [{ "requestId", "name", "department", "date", "kind", "kindLabel", "clockin", "clockout", "reason", "appliedAt", "state", "stateLabel", "reviewerName", "reviewedAt", "reviewNote" }] }`
+- `mine` **200 OK**: `{ "applicant": { "name", "department" }, "today", "missing": [{ "date", "kind": "in" | "out", "kindLabel": "上班" | "下班", "time": "08:30" | "17:30" }], "requests": [{ "requestId", "name", "department", "date", "kind", "kindLabel", "clockin", "clockout", "reason", "appliedAt", "state", "stateLabel", "reviewerName", "reviewedAt", "reviewNote" }] }`
 - `apply` **201 Created**: `{ "status": "pending", "request": {...} }`
 - **400 Bad Request**: `{ "message" }` saying which field is wrong.
 - **403 Forbidden**: Not logged in.
-- **409 Conflict**: A pending or approved request already covers the same half of that day.
+- **409 Conflict**: A pending or approved request already covers the same half of that day, or that date and half is not a missing punch.
 
 ---
 

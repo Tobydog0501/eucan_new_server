@@ -1,5 +1,5 @@
 /**
- * Make-up punch (補登) requests: input checks shared by the endpoints. They
+ * Make-up punch (補打卡申請) requests: input checks shared by the endpoints. They
  * never throw; malformed or wrongly typed input simply fails validation.
  */
 import { isRealDate } from './clockin_sheet';
@@ -26,8 +26,6 @@ export function departmentOf(mgroup: unknown): string {
   return DEPARTMENTS[String(mgroup)] || '';
 }
 
-const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
-
 export function isMakeupKind(value: unknown): value is MakeupKind {
   return value === 'in' || value === 'out' || value === 'both';
 }
@@ -53,40 +51,33 @@ export type MakeupInput = {
   reason: string;
 };
 
+/** What the employee sends from a 補打卡申請 card: the card's date and half, and the reason. */
+export type MakeupCardInput = { date: string; kind: 'in' | 'out'; reason: string };
+
 /**
- * Check a submitted form. Only the time fields the category asks for are
- * required and kept; the other one is dropped. `today` is the Taipei date
- * (YYYY-MM-DD); a request may not be for a later day.
+ * Check a submitted card. The employee only types the reason; date and half
+ * come from the card and must still be checked against the caller's missing
+ * punches by the caller. Times are never taken from the request (see
+ * makeupFromCard). `today` is the Taipei date (YYYY-MM-DD).
  */
-export function validateMakeup(body: { [key: string]: unknown }, today: string): { ok: true, value: MakeupInput } | { ok: false, message: string } {
+export function validateMakeupCard(body: { [key: string]: unknown }, today: string): { ok: true, value: MakeupCardInput } | { ok: false, message: string } {
   const date = body['date'];
   const kind = body['kind'];
-  if (typeof date !== 'string' || !isRealDate(date)) return { ok: false, message: '請選擇正確的未打卡日期' };
-  if (date > today) return { ok: false, message: '未打卡日期不能晚於今天' };
-  if (!isMakeupKind(kind)) return { ok: false, message: '請選擇未打卡類別' };
-
-  const time = (value: unknown): string | null | undefined => {
-    if (value == null || value === '') return null;
-    if (typeof value !== 'string' || !TIME.test(value)) return undefined;
-    return value;
-  };
-  let clockin: string | null = null;
-  let clockout: string | null = null;
-  if (needsClockin(kind)) {
-    const value = time(body['clockin']);
-    if (!value) return { ok: false, message: '請填寫實際上班時間（HH:MM）' };
-    clockin = value;
-  }
-  if (needsClockout(kind)) {
-    const value = time(body['clockout']);
-    if (!value) return { ok: false, message: '請填寫實際下班時間（HH:MM）' };
-    clockout = value;
-  }
-  if (clockin && clockout && clockin >= clockout) return { ok: false, message: '實際下班時間必須晚於上班時間' };
-
+  if (typeof date !== 'string' || !isRealDate(date) || date >= today) return { ok: false, message: '未打卡日期不正確' };
+  if (kind !== 'in' && kind !== 'out') return { ok: false, message: '未打卡類別不正確' };
   const reason = typeof body['reason'] === 'string' ? body['reason'].trim() : '';
   if (!reason) return { ok: false, message: '請填寫未打卡原因' };
   if (reason.length > MAKEUP_REASON_MAX) return { ok: false, message: `未打卡原因最多 ${MAKEUP_REASON_MAX} 字` };
+  return { ok: true, value: { date, kind, reason } };
+}
 
-  return { ok: true, value: { date, kind, clockin, clockout, reason } };
+/** The request to store for a card: the punch time is the shift slot of that half. */
+export function makeupFromCard(card: MakeupCardInput, slot: { start: string, end: string }): MakeupInput {
+  return {
+    date: card.date,
+    kind: card.kind,
+    clockin: card.kind === 'in' ? slot.start : null,
+    clockout: card.kind === 'out' ? slot.end : null,
+    reason: card.reason,
+  };
 }

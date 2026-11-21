@@ -22,6 +22,7 @@ import { mailer, mailDisabled } from './mailer';
 import { aggregateDay, ClockEdit, taipeiToday } from './clockin_sheet';
 import { check_working_day } from './dayoff_calendar';
 import { msUntilNextTaipeiMidnight } from './archive_schedule';
+import { kindsOverlap } from './makeup';
 
 export const MISSED_PUNCH_SUBJECT = '祐肯企業上下班未打卡系統通知';
 
@@ -97,45 +98,121 @@ export type MissedKind = 'in' | 'out' | 'both';
 
 export type MissedPunch = { id: string; name: string; email: string; kind: MissedKind };
 
+/** Shift times: leave covering WORK_START excuses the clock-in, WORK_END the clock-out. */
+export const WORK_START = '08:30';
+export const WORK_END = '17:30';
+
+type Person = ReturnType<sql['getAllUsers']>[number];
+
+/** Is this account expected to punch on `date` (an active employee on the payroll)? */
+function expectedToPunch(user: Person, date: string): boolean {
+  const name = (user.name || '').trim();
+  if (user.type !== 'employee' || user.id === 'monitor' || Number(user.status) !== 1 || !name) return false;
+  if (user.joinTime && String(user.joinTime).slice(0, 10) > date) return false;
+  const leaveDate = user.leaveDate;
+  if (leaveDate && String(leaveDate).slice(0, 10) < date) return false;
+  return true;
+}
+
+export type MissedHalves = { user: Person; missIn: boolean; missOut: boolean };
+
 /**
- * Who missed a punch on `date` (assumed to be a working day): active
- * employees on the payroll that day, minus what approved leave excuses.
+ * The detection shared by the notice mail and the 補打卡申請 page: for each
+ * of `users` expected to punch on `date` (assumed to be a working day), which
+ * halves have no punch and are not excused by leave. `leaves` are the leave
+ * tickets of that day that excuse (the mail passes approved ones only).
  * Soft-deleted punches do not count; approved make-up punches and admin
- * corrections do. People with a pending make-up request for the day are
- * left out, since they have already reported it.
+ * corrections do. Only people missing at least one half are returned.
  */
-export async function findMissedPunches(sqlPlugin: sql, date: string): Promise<MissedPunch[]> {
-  const yearKey = date.slice(0, 4);
-  const monthKey = date.slice(5, 7);
-  const punches = (await sqlPlugin.clockinRecord(yearKey, monthKey)).filter((p) => p.date === date);
+export async function missedHalvesOn(
+  sqlPlugin: sql, date: string, users: Person[], leaves: Array<{ id: string, start: string, end: string }>
+): Promise<MissedHalves[]> {
+  const candidates = users.filter((user) => expectedToPunch(user, date));
+  if (!candidates.length) return [];
+  const punches = (await sqlPlugin.clockinRecord(date.slice(0, 4), date.slice(5, 7))).filter((p) => p.date === date);
   const edits = new Map<string, ClockEdit>();
   for (const edit of sqlPlugin.clockinEditsForDate(date)) edits.set(edit.id, edit);
-  const leaves = sqlPlugin.approvedLeavesOnDate(date);
-  const reported = new Set(sqlPlugin.pendingMakeupIdsOn(date));
-  const workStart = `${date} 08:30`;
-  const workEnd = `${date} 17:30`;
+  const workStart = `${date} ${WORK_START}`;
+  const workEnd = `${date} ${WORK_END}`;
 
-  const missed: MissedPunch[] = [];
-  for (const user of sqlPlugin.getAllUsers()) {
-    const name = (user.name || '').trim();
-    if (user.type !== 'employee' || user.id === 'monitor' || Number(user.status) !== 1 || !name) continue;
-    if (user.joinTime && String(user.joinTime).slice(0, 10) > date) continue;
-    const leaveDate = user.leaveDate;
-    if (leaveDate && String(leaveDate).slice(0, 10) < date) continue;
-    if (reported.has(user.id)) continue;
-
+  const out: MissedHalves[] = [];
+  for (const user of candidates) {
     const own = leaves.filter((l) => l.id === user.id);
     const needIn = !own.some((l) => l.start <= workStart && l.end > workStart);
     const needOut = !own.some((l) => l.start < workEnd && l.end >= workEnd);
     if (!needIn && !needOut) continue;
-
-    const row = aggregateDay(punches.filter((p) => p.id === user.id), edits.get(user.id) || null, name);
+    const row = aggregateDay(punches.filter((p) => p.id === user.id), edits.get(user.id) || null, (user.name || '').trim());
     const missIn = needIn && !(row && row.clockin);
     const missOut = needOut && !(row && row.clockout);
-    if (!missIn && !missOut) continue;
-    missed.push({ id: user.id, name, email: (user.email || '').trim(), kind: missIn && missOut ? 'both' : missIn ? 'in' : 'out' });
+    if (missIn || missOut) out.push({ user, missIn, missOut });
   }
-  return missed;
+  return out;
+}
+
+/**
+ * Who missed a punch on `date` (assumed to be a working day): active
+ * employees on the payroll that day, minus what approved leave excuses.
+ * People with a pending make-up request for the day are left out, since they
+ * have already reported it.
+ */
+export async function findMissedPunches(sqlPlugin: sql, date: string): Promise<MissedPunch[]> {
+  const reported = new Set(sqlPlugin.pendingMakeupIdsOn(date));
+  const users = sqlPlugin.getAllUsers().filter((user) => !reported.has(user.id));
+  const halves = await missedHalvesOn(sqlPlugin, date, users, sqlPlugin.approvedLeavesOnDate(date));
+  return halves.map(({ user, missIn, missOut }) => ({
+    id: user.id,
+    name: (user.name || '').trim(),
+    email: (user.email || '').trim(),
+    kind: missIn && missOut ? 'both' : missIn ? 'in' : 'out',
+  }));
+}
+
+/** How many days back (ending yesterday) the 補打卡申請 page looks for missing punches. */
+export const MAKEUP_LOOKBACK_DAYS = 31;
+
+export type MissingPunchCard = { date: string; kind: 'in' | 'out' };
+
+/** The Taipei date `days` days before `date` (YYYY-MM-DD). */
+function daysBefore(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map((part) => parseInt(part, 10));
+  return new Date(Date.UTC(y, m - 1, d - days)).toISOString().slice(0, 10);
+}
+
+/**
+ * The cards on one employee's 補打卡申請 page: one per missing half (上班 or
+ * 下班) on each working day of the last MAKEUP_LOOKBACK_DAYS days up to
+ * yesterday, newest first. Same detection as the notice mail, except that a
+ * pending leave ticket excuses too and only the halves already covered by a
+ * pending or approved make-up request are hidden (the mail skips the whole
+ * day). Days the calendar cannot classify are left out, as the mail does.
+ */
+export async function missingPunchCards(
+  sqlPlugin: sql, userId: string,
+  options: { today: string, isWorkingDay?: (date: string) => Promise<boolean>, lookbackDays?: number }
+): Promise<MissingPunchCard[]> {
+  const user = sqlPlugin.getUser(userId);
+  if (!user) return [];
+  const isWorking = options.isWorkingDay || isOfficeWorkingDay;
+  const lookback = options.lookbackDays ?? MAKEUP_LOOKBACK_DAYS;
+  const cards: MissingPunchCard[] = [];
+  for (let back = 1; back <= lookback; back++) {
+    const date = daysBefore(options.today, back);
+    if (!expectedToPunch(user, date)) continue;
+    let working: boolean;
+    try {
+      working = await isWorking(date);
+    } catch {
+      continue;
+    }
+    if (!working) continue;
+    const leaves = sqlPlugin.leavesOnDate(date, userId, [0, 1]);
+    const [found] = await missedHalvesOn(sqlPlugin, date, [user], leaves);
+    if (!found) continue;
+    const filed = sqlPlugin.activeMakeupKindsOn(userId, date);
+    if (found.missIn && !filed.some((kind) => kindsOverlap(kind, 'in'))) cards.push({ date, kind: 'in' });
+    if (found.missOut && !filed.some((kind) => kindsOverlap(kind, 'out'))) cards.push({ date, kind: 'out' });
+  }
+  return cards;
 }
 
 /** mailer.send() returns { blocked: true } when the allowlist removed every recipient. */
