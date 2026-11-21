@@ -486,6 +486,55 @@ textarea.form-control {
 	color: var(--eu-brand) !important;
 }
 
+/* ---------- Missing-punch cards (employee 補打卡申請) ---------- */
+.eu-punch-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+	gap: var(--eu-space-3);
+	margin-bottom: var(--eu-space-4);
+}
+
+.eu-punch-grid > .eu-card {
+	margin-bottom: 0;
+}
+
+/* The empty-state and error messages span the whole row, not one card track. */
+.eu-punch-grid > p {
+	grid-column: 1 / -1;
+}
+
+.eu-punch-card {
+	display: flex;
+	flex-direction: column;
+	gap: var(--eu-space-2);
+	border-left: 4px solid var(--eu-warning);
+}
+
+.eu-punch-date {
+	font-weight: 700;
+	color: var(--eu-ink);
+}
+
+.eu-punch-kind {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--eu-space-2);
+	font-size: var(--eu-fs-sm);
+}
+
+.eu-punch-badge {
+	padding: 0.1rem 0.55rem;
+	border-radius: var(--eu-radius-pill);
+	background: var(--eu-warning-soft);
+	color: var(--eu-warning);
+	font-weight: 600;
+}
+
+.eu-punch-card > .btn {
+	align-self: flex-start;
+}
+
 /* ---------- Mobile (390px class phones) ---------- */
 @media (max-width: 575.98px) {
 	:root {
@@ -503,6 +552,14 @@ textarea.form-control {
 
 	.eu-card-flush {
 		padding: 0;
+	}
+
+	.eu-punch-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.eu-punch-card > .btn {
+		align-self: stretch;
 	}
 
 	.eu-toolbar .form-control,

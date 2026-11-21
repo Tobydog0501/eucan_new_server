@@ -10,8 +10,8 @@ import { startArchiveSchedule } from './plugins/archive_schedule';
 import { aggregateDay, ClockEdit, decideEdit, isRealDate, taipeiToday } from './plugins/clockin_sheet';
 import { personalClockinPdf, readMasterClockinPdf, writeClockinMaster } from './plugins/clockin_archive';
 import { canDeletePunch, canRestorePunch, canReviewMakeup } from './plugins/account_rules';
-import { departmentOf, MAKEUP_KIND_LABELS, MAKEUP_REASON_MAX, validateMakeup } from './plugins/makeup';
-import { startMissedPunchSchedule } from './plugins/missed_punch';
+import { departmentOf, kindsOverlap, MAKEUP_KIND_LABELS, MAKEUP_REASON_MAX, makeupFromCard, validateMakeupCard } from './plugins/makeup';
+import { missingPunchCards, startMissedPunchSchedule, WORK_END, WORK_START } from './plugins/missed_punch';
 import type { MakeupRequestRow, MakeupState } from './plugins/sql';
 import { onDownloadDone } from './plugins/http_util';
 import path from 'path';
@@ -661,7 +661,7 @@ async function changePunch(req: Request, res: Response, action: 'delete' | 'rest
   }
 }
 
-// ---- Make-up punch (補登) requests -------------------------------------
+// ---- Make-up punch requests (employee page 補打卡申請, admin page 補登審核) ----
 
 const MAKEUP_STATE_LABELS: Record<MakeupState, string> = { pending: '待審', approved: '核准', rejected: '駁回' };
 
@@ -685,9 +685,20 @@ function makeupView(row: MakeupRequestRow) {
   };
 }
 
-// The caller's own requests plus what the form fills in by itself. Only ever
-// the caller's: no parameter selects another person.
-app.get('/api/makeup/mine', (req: Request, res: Response) => {
+const MISSING_KIND_LABELS: Record<'in' | 'out', string> = { in: '上班', out: '下班' };
+
+function missingCardView(card: { date: string, kind: 'in' | 'out' }) {
+  return {
+    date: card.date,
+    kind: card.kind,
+    kindLabel: MISSING_KIND_LABELS[card.kind],
+    time: card.kind === 'in' ? WORK_START : WORK_END,
+  };
+}
+
+// The caller's own requests and missing punches. Only ever the caller's: no
+// parameter selects another person.
+app.get('/api/makeup/mine', async (req: Request, res: Response) => {
   try {
     const account = String(req.query.account || '');
     const cookie = String(req.query.cookie || '');
@@ -701,9 +712,12 @@ app.get('/api/makeup/mine', (req: Request, res: Response) => {
       res.sendStatus(403);
       return;
     }
+    const today = taipeiToday();
+    const missing = await missingPunchCards(sqlPlugin, user.id, { today });
     res.json({
       applicant: { name: user.name, department: departmentOf(user.mgroup) },
-      today: taipeiToday(),
+      today,
+      missing: missing.map(missingCardView),
       requests: sqlPlugin.makeupRequestsOf(account).map(makeupView),
     });
   } catch (e) {
@@ -712,7 +726,7 @@ app.get('/api/makeup/mine', (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/makeup/apply', (req: Request, res: Response) => {
+app.post('/api/makeup/apply', async (req: Request, res: Response) => {
   try {
     const body = (req.body && typeof req.body === 'object') ? req.body as { [key: string]: unknown } : {};
     const account = body['account'];
@@ -727,17 +741,27 @@ app.post('/api/makeup/apply', (req: Request, res: Response) => {
       res.sendStatus(403);
       return;
     }
-    const checked = validateMakeup(body, taipeiToday());
+    const today = taipeiToday();
+    const checked = validateMakeupCard(body, today);
     if (!checked.ok) {
       res.status(400).json({ message: checked.message });
       return;
     }
-    const result = sqlPlugin.createMakeupRequest({ id: user.id, name: user.name, department: departmentOf(user.mgroup) }, checked.value);
-    if (result === 'duplicate') {
-      res.status(409).json({ message: '這一天已有待審或已核准的同類補登申請' });
+    // Only a card the page shows may be filed: date and half must be a missing punch of the caller.
+    const card = checked.value;
+    const missing = await missingPunchCards(sqlPlugin, user.id, { today });
+    if (!missing.some((m) => m.date === card.date && m.kind === card.kind)) {
+      const filed = sqlPlugin.activeMakeupKindsOn(user.id, card.date).some((kind) => kindsOverlap(kind, card.kind));
+      res.status(409).json({ message: filed ? '這一天已有待審或已核准的同類補打卡申請' : '這一天沒有需要補打卡的紀錄' });
       return;
     }
-    log.logFormat(`${account} filed make-up request #${result} for ${checked.value.date} (${checked.value.kind}).`);
+    const input = makeupFromCard(card, { start: WORK_START, end: WORK_END });
+    const result = sqlPlugin.createMakeupRequest({ id: user.id, name: user.name, department: departmentOf(user.mgroup) }, input);
+    if (result === 'duplicate') {
+      res.status(409).json({ message: '這一天已有待審或已核准的同類補打卡申請' });
+      return;
+    }
+    log.logFormat(`${account} filed make-up request #${result} for ${input.date} (${input.kind}).`);
     res.status(201).json({ status: 'pending', request: makeupView(sqlPlugin.getMakeupRequest(result) as MakeupRequestRow) });
   } catch (e) {
     log.logFormat((e as string), new Date());
@@ -833,7 +857,7 @@ app.post('/api/makeup/review', async (req: Request, res: Response) => {
     }
     const request = sqlPlugin.getMakeupRequest(requestId);
     if (!request) {
-      res.status(404).json({ message: '找不到這筆補登申請' });
+      res.status(404).json({ message: '找不到這筆補打卡申請' });
       return;
     }
     // An applicant whose account no longer exists is treated like an admin:
@@ -849,7 +873,7 @@ app.post('/api/makeup/review', async (req: Request, res: Response) => {
     const who = { id: account, name: ret['name'] || account };
     const result = sqlPlugin.reviewMakeupRequest(requestId, decision, who, note);
     if (result.result === 'missing') {
-      res.status(404).json({ message: '找不到這筆補登申請' });
+      res.status(404).json({ message: '找不到這筆補打卡申請' });
       return;
     }
     if (result.result === 'not-pending') {

@@ -1,4 +1,6 @@
-// 補登申請（員工端）：填寫未打卡補登申請，並查看自己申請的審核狀態。
+// 補打卡申請（員工端）：列出自己應打卡卻沒有打卡（也沒有請假）的時段，
+// 每張卡片按「申請補打卡」只需填寫未打卡原因；日期、上班／下班由卡片決定。
+// 下方列出自己申請的審核狀態。
 $(function () {
     const API = EUCAN_API_BASE;
     const sessionKey = readCookie("session");
@@ -14,21 +16,34 @@ $(function () {
     loginCheck(userId, sessionKey);
 
     const STATE_CLASS = { pending: "text-secondary", approved: "text-success", rejected: "text-danger" };
+    const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
+    const modal = new bootstrap.Modal(document.getElementById("applyModal"));
+    let current = null; // the card being applied for
 
-    // 依類別只要求對應的時間欄位。
-    function syncKind() {
-        const kind = $("#kind").val();
-        const needIn = kind === "in" || kind === "both";
-        const needOut = kind === "out" || kind === "both";
-        $("#clockin").prop("disabled", !needIn).prop("required", needIn);
-        $("#clockout").prop("disabled", !needOut).prop("required", needOut);
-        $("#clockinStar").toggle(needIn);
-        $("#clockoutStar").toggle(needOut);
-        if (!needIn) $("#clockin").val("");
-        if (!needOut) $("#clockout").val("");
+    function dateLabel(date) {
+        const [y, m, d] = date.split("-").map(Number);
+        return `${date}（${WEEKDAYS[new Date(y, m - 1, d).getDay()]}）`;
     }
-    $("#kind").on("change", syncKind);
-    syncKind();
+
+    function renderMissing(cards) {
+        const box = $("#missing").empty();
+        if (!cards.length) {
+            box.append($("<p>").addClass("eu-card text-muted mb-0").text("近一個月沒有需要補打卡的紀錄。"));
+            return;
+        }
+        cards.forEach((card) => {
+            const button = $("<button>").attr("type", "button").addClass("btn btn-primary btn-sm").text("申請補打卡")
+                .on("click", () => openApply(card));
+            box.append($("<div>").addClass("eu-card eu-punch-card").attr("data-date", card.date).attr("data-kind", card.kind).append(
+                $("<div>").addClass("eu-punch-date").text(dateLabel(card.date)),
+                $("<div>").addClass("eu-punch-kind").append(
+                    $("<span>").addClass("eu-punch-badge").text(`未打${card.kindLabel}卡`),
+                    $("<span>").addClass("text-muted").text(`應打卡 ${card.time}`)
+                ),
+                button
+            ));
+        });
+    }
 
     function renderMine(requests) {
         const body = $("#mine").empty();
@@ -57,35 +72,32 @@ $(function () {
             dataType: "json",
             data: { account: userId, cookie: sessionKey },
         }).done((res) => {
-            $("#applicant").val(res.applicant.name);
-            $("#department").val(res.applicant.department);
-            $("#appliedOn").val(res.today);
-            $("#date").attr("max", res.today);
+            renderMissing(res.missing || []);
             renderMine(res.requests);
         }).fail(() => {
-            alert("無法取得補登資料，請稍後再試！");
+            $("#missing").empty().append($("<p>").addClass("text-danger mb-0").text("無法取得未打卡紀錄，請稍後再試。"));
+            alert("無法取得補打卡資料，請稍後再試！");
         });
     }
     load();
 
-    $("#makeupForm").on("submit", function (event) {
-        event.preventDefault();
+    function openApply(card) {
+        current = card;
+        $("#applyDate").text(dateLabel(card.date));
+        $("#applyKind").text(`${card.kindLabel}未打卡`);
+        $("#applyTime").text(card.time);
+        $("#reason").val("");
         $("#formError").text("");
-        const kind = $("#kind").val();
-        const form = {
-            account: userId,
-            cookie: sessionKey,
-            date: $("#date").val(),
-            kind,
-            clockin: $("#clockin").prop("disabled") ? null : ($("#clockin").val() || null),
-            clockout: $("#clockout").prop("disabled") ? null : ($("#clockout").val() || null),
-            reason: $("#reason").val().trim(),
-        };
-        if (!form.date) return $("#formError").text("請選擇未打卡日期");
-        if ((kind === "in" || kind === "both") && !form.clockin) return $("#formError").text("請填寫實際上班時間");
-        if ((kind === "out" || kind === "both") && !form.clockout) return $("#formError").text("請填寫實際下班時間");
-        if (form.clockin && form.clockout && form.clockin >= form.clockout) return $("#formError").text("實際下班時間必須晚於上班時間");
-        if (!form.reason) return $("#formError").text("請填寫未打卡原因");
+        modal.show();
+    }
+    document.getElementById("applyModal").addEventListener("shown.bs.modal", () => $("#reason").trigger("focus"));
+
+    $("#applyForm").on("submit", function (event) {
+        event.preventDefault();
+        if (!current) return;
+        $("#formError").text("");
+        const reason = $("#reason").val().trim();
+        if (!reason) return $("#formError").text("請填寫未打卡原因");
 
         const btn = $("#submitBtn").prop("disabled", true);
         $.ajax({
@@ -93,15 +105,15 @@ $(function () {
             type: "POST",
             dataType: "json",
             headers: { "Content-Type": "application/json" },
-            data: JSON.stringify(form),
+            data: JSON.stringify({ account: userId, cookie: sessionKey, date: current.date, kind: current.kind, reason }),
         }).done(() => {
-            alert("已送出補登申請，請等候主管審核");
-            $("#reason").val("");
-            $("#clockin, #clockout").val("");
+            modal.hide();
+            alert("已送出補打卡申請，請等候主管審核");
             load();
         }).fail((xhr) => {
             const message = xhr.responseJSON && xhr.responseJSON.message;
             $("#formError").text(message || "送出失敗，請稍後再試");
+            if (xhr.status === 409) load();
         }).always(() => {
             btn.prop("disabled", false);
         });

@@ -1,4 +1,4 @@
-// 補登審核（後台）：主管／管理員核准或駁回員工的補登申請。
+// 補登審核（後台）：主管／管理員核准或駁回員工的補打卡申請。
 // 核准後才會產生標記為「補登」的打卡紀錄；駁回需填原因。
 $(function () {
     const API = EUCAN_API_BASE;
@@ -19,7 +19,7 @@ $(function () {
     function render(requests) {
         const body = $("#requests").empty();
         if (!requests.length) {
-            body.append($("<tr>").append($("<td>").attr("colspan", 10).addClass("text-center text-muted").text("沒有符合的補登申請")));
+            body.append($("<tr>").append($("<td>").attr("colspan", 10).addClass("text-center text-muted").text("沒有符合的補打卡申請")));
             return;
         }
         requests.forEach((r) => {
@@ -56,13 +56,13 @@ $(function () {
             dataType: "json",
             data: { account: userId, cookie: sessionKey, state: $("#state").val() },
         }).done((res) => render(res.requests))
-            .fail(() => alert("無法取得補登申請，請稍後再試"));
+            .fail(() => alert("無法取得補打卡申請，請稍後再試"));
     }
 
     function decide(r, decision) {
         let note = "";
         if (decision === "reject") {
-            note = prompt(`駁回 ${r.name} ${r.date} 的補登申請，請填寫原因：`, "");
+            note = prompt(`駁回 ${r.name} ${r.date} 的補打卡申請，請填寫原因：`, "");
             if (note === null) return;
             note = note.trim();
             if (!note) {

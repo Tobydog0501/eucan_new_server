@@ -16,56 +16,16 @@
 
     <main class="eu-page">
         <header class="eu-page-header">
-            <h1 class="eu-page-title">補登申請</h1>
-            <p class="eu-page-subtitle">忘記打卡時，填寫實際上下班時間送交主管審核。</p>
+            <h1 class="eu-page-title">補打卡申請</h1>
+            <p class="eu-page-subtitle">系統列出近一個月應打卡卻沒有打卡、也沒有請假的時段；填寫原因後送交主管審核。</p>
         </header>
 
-        <form id="makeupForm" class="eu-card eu-page-narrow ms-0" novalidate>
-            <div class="row g-3">
-                <div class="col-sm-6">
-                    <label class="form-label" for="applicant">申請人</label>
-                    <input id="applicant" class="form-control" type="text" readonly>
-                </div>
-                <div class="col-sm-6">
-                    <label class="form-label" for="department">部門</label>
-                    <input id="department" class="form-control" type="text" readonly>
-                </div>
-                <div class="col-sm-6">
-                    <label class="form-label" for="date">未打卡日期 <span class="text-danger">*</span></label>
-                    <input id="date" class="form-control" type="date" required>
-                </div>
-                <div class="col-sm-6">
-                    <label class="form-label" for="kind">未打卡類別 <span class="text-danger">*</span></label>
-                    <select id="kind" class="form-select" required>
-                        <option value="in">上班未打卡</option>
-                        <option value="out">下班未打卡</option>
-                        <option value="both">上下班皆未打卡</option>
-                    </select>
-                </div>
-                <div class="col-sm-6">
-                    <label class="form-label" for="clockin">實際上班時間 <span class="text-danger" id="clockinStar">*</span></label>
-                    <input id="clockin" class="form-control" type="time">
-                </div>
-                <div class="col-sm-6">
-                    <label class="form-label" for="clockout">實際下班時間 <span class="text-danger" id="clockoutStar">*</span></label>
-                    <input id="clockout" class="form-control" type="time">
-                </div>
-                <div class="col-12">
-                    <label class="form-label" for="reason">未打卡原因 <span class="text-danger">*</span></label>
-                    <textarea id="reason" class="form-control" rows="3" maxlength="200" required></textarea>
-                </div>
-                <div class="col-sm-6">
-                    <label class="form-label" for="appliedOn">申請日期</label>
-                    <input id="appliedOn" class="form-control" type="text" readonly>
-                </div>
-                <div class="col-12">
-                    <div id="formError" class="text-danger mb-2" role="alert"></div>
-                    <button id="submitBtn" type="submit" class="btn btn-primary">送出申請</button>
-                </div>
-            </div>
-        </form>
+        <h2 class="eu-section-title">未打卡紀錄</h2>
+        <div id="missing" class="eu-punch-grid" aria-live="polite">
+            <p class="text-muted mb-0">載入中…</p>
+        </div>
 
-        <h2 class="eu-section-title mt-4">我的補登申請</h2>
+        <h2 class="eu-section-title mt-4">我的補打卡申請</h2>
         <div class="eu-card eu-card-flush">
             <div class="table-responsive">
                 <table class="table table-striped align-middle">
@@ -88,6 +48,33 @@
             </div>
         </div>
     </main>
+
+    <div class="modal fade" id="applyModal" tabindex="-1" aria-labelledby="applyTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <form id="applyForm" class="modal-content" novalidate>
+                <div class="modal-header">
+                    <h2 class="modal-title fs-5" id="applyTitle">申請補打卡</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉"></button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-bordered eu-table-kv mb-3">
+                        <tbody>
+                            <tr><th scope="row">未打卡日期</th><td id="applyDate"></td></tr>
+                            <tr><th scope="row">未打卡類別</th><td id="applyKind"></td></tr>
+                            <tr><th scope="row">補打卡時間</th><td id="applyTime"></td></tr>
+                        </tbody>
+                    </table>
+                    <label class="form-label" for="reason">未打卡原因 <span class="text-danger">*</span></label>
+                    <textarea id="reason" class="form-control" rows="3" maxlength="200" required></textarea>
+                    <div id="formError" class="text-danger mt-2" role="alert"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                    <button id="submitBtn" type="submit" class="btn btn-primary">送出申請</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <script src="../js/jquery-3.7.1.min.js"></script>
     <script src="../js/cookieOperation.js"></script>
