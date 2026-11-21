@@ -3,7 +3,9 @@
  * They never throw: malformed or wrongly typed input simply fails validation.
  */
 
-const TIMESTAMP = /^(\d{4})-(\d{1,2})-(\d{1,2}) (\d{2}):(\d{2})(?::\d{2})?$/;
+// Two-digit month/day/hour/minute, optional seconds 00-59: the shape SQLite's
+// strftime() accepts, so a value that passes here is never stored as NULL.
+const TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})(?::([0-5]\d))?$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** A single request may not span more than this many days. */
 export const MAX_SPAN_DAYS = 366;
@@ -21,6 +23,15 @@ export function parseLeaveTime(value: unknown): Date | null {
   const date = new Date(year, month - 1, day, hour, minute);
   if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
   return date;
+}
+
+/**
+ * The stored form "YYYY-MM-DD HH:MM" of a value parseLeaveTime accepts
+ * (drops optional seconds), or null when it does not parse.
+ */
+export function normalizeLeaveTime(value: unknown): string | null {
+  if (parseLeaveTime(value) === null) return null;
+  return (value as string).slice(0, 16);
 }
 
 /**

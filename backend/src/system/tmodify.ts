@@ -5,7 +5,7 @@ import logger from "../plugins/logger";
 import { sql } from "../plugins/sql";
 import { caculateTime } from "../plugins/dayoff_calculate";
 import { isLeaveType } from "../plugins/leave_types";
-import { parseLeaveTime, validRange } from "../plugins/leave_input";
+import { normalizeLeaveTime, validRange } from "../plugins/leave_input";
 
 
 module.exports = async function utils(sqlPlugin:sql,log:logger,mailer:mailer,req:Request,res:Response):Promise<void>{
@@ -55,19 +55,26 @@ module.exports = async function utils(sqlPlugin:sql,log:logger,mailer:mailer,req
 
     // Deleting only needs the serial number; the other fields are echoed back
     // from the stored ticket by the page and are not used.
+    // Stored as "YYYY-MM-DD HH:MM", the same form /request writes via strftime().
+    let startText = "";
+    let endText = "";
     if (action === 1) {
-        if (!isLeaveType(type) || typeof reason !== "string" || parseLeaveTime(start) === null || parseLeaveTime(end) === null) {
+        const startNorm = normalizeLeaveTime(start);
+        const endNorm = normalizeLeaveTime(end);
+        if (!isLeaveType(type) || typeof reason !== "string" || startNorm === null || endNorm === null) {
             res.sendStatus(400);
             return;
         }
-        if (!validRange(start, end).ok) {
+        if (!validRange(startNorm, endNorm).ok) {
             res.sendStatus(400);
             return;
         }
+        startText = startNorm;
+        endText = endNorm;
     }
 
-    const totalTime = action === 1 ? await caculateTime(start, end) : 0;
-    const result = sqlPlugin.modifyTicket(`${num}`, action, `${type}`, `${start}`, `${end}`, totalTime, state, `${reason}`);
+    const totalTime = action === 1 ? await caculateTime(startText, endText) : 0;
+    const result = sqlPlugin.modifyTicket(`${num}`, action, `${type}`, startText, endText, totalTime, state, `${reason}`);
     if(result===null){
         res.sendStatus(403);
         return;
