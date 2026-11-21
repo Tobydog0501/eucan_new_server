@@ -14,7 +14,7 @@ function zeroOrOne(value: unknown): 0 | 1 | null {
     return null;
 }
 
-module.exports = function utils(sqlPlugin:sql,log:logger,mailer:mailer,req:Request,res:Response):void{
+module.exports = async function utils(sqlPlugin:sql,log:logger,mailer:mailer,req:Request,res:Response):Promise<void>{
     const dataReceived:{[key:string]:any} = req.body;
 
     if(!valid(dataReceived,["account","cookie","user","pwd","mail","name","date","mgroup","permit"])){
@@ -58,7 +58,7 @@ module.exports = function utils(sqlPlugin:sql,log:logger,mailer:mailer,req:Reque
     }
 
     try{
-        sqlPlugin.register(user,password,mail,name,type,jointime,mgroup,permit);
+        await sqlPlugin.register(user,password,mail,name,type,jointime,mgroup,permit);
         sqlPlugin.init(user);
     }catch(e){
         // Most often the id already exists.

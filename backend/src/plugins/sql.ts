@@ -2,7 +2,8 @@ import crypto from "crypto";
 import Database from "better-sqlite3";
 import logger from './logger'
 import { getSplitTimestamp, fetch_all_nwd, getROCYearsInRange } from "./dayoff_calculate"
-import { userinfo, dayoffinfo, clockinrecord, requestquery, logininfo, digit, dayofftype, dayoffinfo_ret } from "../types/types";
+import { userinfo, userinfo_public, dayoffinfo, clockinrecord, requestquery, logininfo, digit, dayofftype, dayoffinfo_ret } from "../types/types";
+import { hashPassword, verifyPassword } from "./password";
 import { ClockEdit, ClockSheetRow, normalizeTime } from "./clockin_sheet";
 import { join } from "path";
 import { DAYOFF_COLUMNS, dayoffColumnFor, leaveColumn } from "./leave_types";
@@ -10,6 +11,9 @@ import { runMigrations } from "./migrations";
 import { kindsOverlap, MakeupInput, MakeupKind } from "./makeup";
 // const logger = require("./logger.js");
 const log: logger = new logger(`./logs/${new Date().toISOString().split('T')[0]}.log`);
+
+/** userinfo columns that may leave the server (everything except pwd). */
+const USERINFO_PUBLIC_COLUMNS = "id,type,email,name,joinTime,mgroup,permit,status,leaveDate";
 
 export class sql {
 
@@ -87,7 +91,7 @@ export class sql {
    * Would login() accept these credentials? Read-only: no session is issued
    * or refreshed and nothing is logged. Used to gate root's second factor.
    */
-  credentialsValid(user: string, pwd: string | null, cookie: string | null): boolean {
+  async credentialsValid(user: string, pwd: string | null, cookie: string | null): Promise<boolean> {
     if (typeof user !== "string") return false;
     const row = this.login_db.prepare(`SELECT pwd, status FROM userinfo WHERE id= ?`).get(user) as { pwd: string, status: number } | undefined;
     if (row === undefined || row.status == 0) return false;
@@ -97,10 +101,26 @@ export class sql {
         return true;
       }
     }
-    return typeof pwd === "string" && pwd == row.pwd;
+    return (await verifyPassword(pwd, row.pwd)).ok;
   }
 
-  login(user: string, pwd: string | null, cookie: string | null): { msg: string, accountType?: string, sessionKey?: string, name?: string } {
+  /**
+   * Replace a stored password (a legacy plain value, or a hash with older cost
+   * parameters) with a fresh hash, but only if the row still holds the value
+   * that was just verified.
+   */
+  private async upgradePasswordHash(user: string, password: string, verifiedStored: string): Promise<void> {
+    try {
+      const hashed = await hashPassword(password);
+      const changed = this.login_db.prepare(`UPDATE userinfo SET pwd= ? WHERE id= ? AND pwd= ?;`).run(hashed, user, verifiedStored).changes;
+      if (changed > 0) log.logFormat(`${user}'s stored password was upgraded to the current hash format.`);
+    } catch (e) {
+      // The login itself already succeeded; the upgrade is retried next time.
+      log.logFormat(`Could not upgrade the stored password of ${user}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  async login(user: string, pwd: string | null, cookie: string | null): Promise<{ msg: string, accountType?: string, sessionKey?: string, name?: string }> {
     if (typeof user !== "string" || (pwd !== null && typeof pwd !== "string") || (cookie !== null && typeof cookie !== "string")) {
       return { msg: "wrong type" };
     }
@@ -136,7 +156,11 @@ export class sql {
       }
       else expired = true;
     }
-    if (pwd == sqldata["pwd"]) {
+    const check = await verifyPassword(pwd, sqldata["pwd"]);
+    if (check.ok) {
+      if (check.needsRehash) {
+        await this.upgradePasswordHash(user, pwd as string, sqldata["pwd"]);
+      }
       // Checking database if the user have logined before.
       if (loginHashData == undefined) {
         // Generating hash.
@@ -157,7 +181,7 @@ export class sql {
         log.logFormat(`${user} has logined with password successfully.`, currentTime);
       return { msg: "success", accountType: sqldata["type"], sessionKey: hash, name: sqldata["name"] };
     } else {
-      log.logFormat(`${user} Failed to log in with password: ${pwd}`, currentTime);
+      log.logFormat(`${user} failed to log in: wrong password.`, currentTime);
       return { msg: "wrong pwd" };
     }
   }
@@ -166,8 +190,9 @@ export class sql {
    * 
    * @returns {Array<object>}
    */
-  getAllUsers(): userinfo[] {
-    const data = (this.login_db.prepare(`SELECT * FROM userinfo;`).all() as userinfo[]);
+  getAllUsers(): userinfo_public[] {
+    // Never the stored password: callers may send these rows to the browser.
+    const data = (this.login_db.prepare(`SELECT ${USERINFO_PUBLIC_COLUMNS} FROM userinfo;`).all() as userinfo_public[]);
     return data;
   }
 
@@ -266,9 +291,10 @@ export class sql {
     }
   }
 
-  register(user: string, password: string, mail: string, name: string, type: string, jointime: string, mgroup: digit, permit: digit): void {
+  async register(user: string, password: string, mail: string, name: string, type: string, jointime: string, mgroup: digit, permit: digit): Promise<void> {
     // id,pwd,type,email,name,type,mgroup
-    this.login_db.prepare(`INSERT INTO userinfo (id,pwd,type,email,name,joinTime,mgroup,permit) VALUES (?,?,?,?,?,(strftime('%Y-%m-%d',?)),?,?);`).run(user, password, type, mail, name, jointime, mgroup, permit);
+    const hashed = await hashPassword(password);
+    this.login_db.prepare(`INSERT INTO userinfo (id,pwd,type,email,name,joinTime,mgroup,permit) VALUES (?,?,?,?,?,(strftime('%Y-%m-%d',?)),?,?);`).run(user, hashed, type, mail, name, jointime, mgroup, permit);
     return;
   }
 
@@ -761,8 +787,15 @@ export class sql {
     return run();
   }
 
-  modifyEmployeeInfo(user: string, pwd: string, type: string, email: string, name: string, joinTime: string, mgroup: digit, permit: digit, status: digit, leaveDate: string | null): void {
-    this.login_db.prepare(`UPDATE userinfo SET pwd= ?,type= ?,email= ?,name= ?,joinTime= ?,mgroup= ?,permit= ?,status= ?,leaveDate= ? WHERE id= ?;`).run(pwd, type, email, name, joinTime, mgroup, permit, status, leaveDate, user);
+  /** `pwd` null or empty keeps the current password; anything else is stored hashed. */
+  async modifyEmployeeInfo(user: string, pwd: string | null, type: string, email: string, name: string, joinTime: string, mgroup: digit, permit: digit, status: digit, leaveDate: string | null): Promise<void> {
+    const hashed = typeof pwd === "string" && pwd.length > 0 ? await hashPassword(pwd) : null;
+    this.login_db.transaction(() => {
+      this.login_db.prepare(`UPDATE userinfo SET type= ?,email= ?,name= ?,joinTime= ?,mgroup= ?,permit= ?,status= ?,leaveDate= ? WHERE id= ?;`).run(type, email, name, joinTime, mgroup, permit, status, leaveDate, user);
+      if (hashed !== null) {
+        this.login_db.prepare(`UPDATE userinfo SET pwd= ? WHERE id= ?;`).run(hashed, user);
+      }
+    })();
     return;
   }
 
@@ -771,8 +804,8 @@ export class sql {
     return row ? row : null;
   }
 
-  getUser(id: string): userinfo | null {
-    const row = this.login_db.prepare(`SELECT * FROM userinfo WHERE id = ?;`).get(id) as userinfo | undefined;
+  getUser(id: string): userinfo_public | null {
+    const row = this.login_db.prepare(`SELECT ${USERINFO_PUBLIC_COLUMNS} FROM userinfo WHERE id = ?;`).get(id) as userinfo_public | undefined;
     return row ? row : null;
   }
 
