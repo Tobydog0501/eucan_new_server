@@ -131,7 +131,7 @@ $(function () {
 
     function fetchData(year) {
         $.ajax({
-            url: "https://eucan.ddns.net:3000/empquery",
+            url: `${EUCAN_API_BASE}/empquery`,
             type: "POST",
             dataType: "json",
             headers: { "Content-Type": "application/json" },

@@ -130,12 +130,15 @@ function removeDir(dir) {
  * A minimal SMTP server on a random local port.
  *   mode 'accept': takes every message and records it in `messages`.
  *   mode 'reject': answers the greeting with 554 so every send fails at once.
+ *   connections() counts every TCP connection, including verify() at startup.
  */
 function startFakeSmtp(mode = 'accept') {
   const messages = [];
   const waiters = [];
   const sockets = new Set();
+  let connections = 0;
   const server = net.createServer((sock) => {
+    connections++;
     sockets.add(sock);
     sock.on('close', () => sockets.delete(sock));
     sock.on('error', () => {});
@@ -194,7 +197,7 @@ function startFakeSmtp(mode = 'accept') {
 
   return new Promise((resolve, reject) => {
     server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => resolve({ port: server.address().port, messages, waitForMessages, close }));
+    server.listen(0, '127.0.0.1', () => resolve({ port: server.address().port, messages, waitForMessages, connections: () => connections, close }));
   });
 }
 

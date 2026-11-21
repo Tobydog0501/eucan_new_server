@@ -112,7 +112,7 @@ function clean() {
 
 function quota(year, userId, sessionKey) {
     return $.ajax({
-        url: `https://eucan.ddns.net:3000/quota`,
+        url: `${EUCAN_API_BASE}/quota`,
         type: "POST",
         dataType: "json",
         headers: {
@@ -127,7 +127,7 @@ function quota(year, userId, sessionKey) {
 }
 function dayoff(year, userId, sessionKey) {
     return $.ajax({
-        url: `https://eucan.ddns.net:3000/dayoff`,
+        url: `${EUCAN_API_BASE}/dayoff`,
         type: "POST",
         dataType: "json",
         headers: {
@@ -194,7 +194,7 @@ function submitLeaveRequest() {
     console.log("🚀 發送請假申請:", requestData);
 
     $.ajax({
-        url: "https://eucan.ddns.net:3000/request",
+        url: `${EUCAN_API_BASE}/request`,
         type: "POST",
         dataType: "text", // 設為 text，讓我們可以手動解析 JSON
         headers: { "Content-Type": "application/json" },

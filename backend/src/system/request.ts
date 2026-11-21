@@ -6,6 +6,7 @@ import { sql } from "../plugins/sql";
 import { caculateTime } from "../plugins/dayoff_calculate";
 import { validRange, validReason, validTime } from "../plugins/leave_input";
 import { dayofftype } from "../types/types";
+import { managerMail } from "../plugins/manager_mail";
 
 
 module.exports = async function utils(sqlPlugin: sql, log: logger, mailer: mailer, req: Request, res: Response): Promise<void> {
@@ -83,8 +84,13 @@ module.exports = async function utils(sqlPlugin: sql, log: logger, mailer: maile
     if (ret["multiple"]) sqlPlugin.setPermit(`${parseInt(ret["num"]) - 1}`, 1);
     res.send("已成功請假");
   } else {
-    var man = ["jeff@eucan.com.tw", "catherine@eucan.com.tw"]
-    mailer.send(man[(ret["mgroup"] as number)], "請假審核要求", `您好，\n員工 ${ret["name"]}於剛才發送請假要求。\n詳細內容請登入請假系統審核。\n\n<此信為系統自動發送，請勿回覆>`)
+    const to = managerMail(ret["mgroup"] as number);
+    if (!to) {
+      log.logFormat(`No manager mail configured for mgroup ${ret["mgroup"]}; leave request mail for ${account} not sent`);
+      res.send("已向主管提出請假申請，請點擊上一頁回到請假頁面");
+      return;
+    }
+    mailer.send(to, "請假審核要求", `您好，\n員工 ${ret["name"]}於剛才發送請假要求。\n詳細內容請登入請假系統審核。\n\n<此信為系統自動發送，請勿回覆>`)
       .catch((e) => log.logFormat(`Failed to send leave request mail for ${account}: ${String(e)}`));
     res.send("已向主管提出請假申請，請點擊上一頁回到請假頁面")
   }

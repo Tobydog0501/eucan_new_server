@@ -1,2 +1,17 @@
 logs
+
+# The whole build context is copied into the web root, so anything listed
+# here would otherwise be downloadable from the site.
 .git
+.env
+.env.*
+**/.env
+**/.env.*
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+databases/
+proofs/
+calendars/
+clock/

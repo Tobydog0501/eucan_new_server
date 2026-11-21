@@ -9,7 +9,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile_test
       args:
-        API_ORIGIN: "http://${TEST_HOST:-localhost}"
+        # Empty: pages call port 3000 on the host they were served from.
+        API_BASE: "${TEST_API_BASE:-}"
     ports:
       - "8000:8000"
     volumes:
@@ -27,6 +28,7 @@ services:
       SMTP_SERVER: "127.0.0.1"
       SMTP_PORT: "1"
       USER_MAIL: "noreply@example.invalid"
+      LEAVE_MANAGER_MAILS: "manager0@example.invalid,manager1@example.invalid"
       USER_PWD: "test-not-a-password"
       TOTP_VALIDATE_URL: "http://127.0.0.1:1/disabled"
       SECRET: "test-not-a-secret"

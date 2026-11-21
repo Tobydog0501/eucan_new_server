@@ -10,7 +10,7 @@ $(function () {
 
     $("#navbar-container").load("../admin/navbar.html");
 
-    const apiBase = `${window.location.protocol}//${window.location.hostname}:3000`;
+    const apiBase = EUCAN_API_BASE;
     const editModal = new bootstrap.Modal(document.getElementById("clockinEditModal"));
     const punchModal = new bootstrap.Modal(document.getElementById("punchModal"));
     let viewToken = 0;

@@ -11,7 +11,7 @@ $(function () {
     loginCheck(userId, sessionKey);
     $("#navbar-container").load("../admin/navbar.html");
 
-    const apiBase = `${window.location.protocol}//${window.location.hostname}:3000`;
+    const apiBase = EUCAN_API_BASE;
     let employees = [];
     let selected = new Set();
 

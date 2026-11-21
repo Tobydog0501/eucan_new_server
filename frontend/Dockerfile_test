@@ -1,14 +1,22 @@
-# Test-site frontend. The pages hardcode https://eucan.ddns.net:3000 as the API;
-# rewrite it so the test UI can never call the production backend.
-#   docker build --build-arg API_ORIGIN=http://<test-host> -f Dockerfile_test .
+# Test-site frontend: same as Dockerfile, plus a build-time check that no page
+# still names the production host, so the test UI cannot call it.
+#   docker build [--build-arg API_BASE=http://<test-host>:3000] -f Dockerfile_test .
+# Without API_BASE the pages call port 3000 on the host they were loaded from.
 FROM nginx:1.31.9
 
-ARG API_ORIGIN=http://localhost
+ARG API_BASE=
 
 COPY . /usr/share/nginx/html/
-RUN find /usr/share/nginx/html/ -type f \( -name '*.js' -o -name '*.html' \) \
-        -exec sed -i "s|https://eucan.ddns.net|${API_ORIGIN}|g" {} + \
-    && ! grep -rl --include='*.js' --include='*.html' 'eucan.ddns.net' /usr/share/nginx/html/
+RUN if [ -n "$API_BASE" ]; then \
+        echo "$API_BASE" | grep -Eq '^https?://[A-Za-z0-9.-]+(:[0-9]+)?$' \
+            || { echo "API_BASE must look like http(s)://host[:port]" >&2; exit 1; }; \
+        sed -i "s|^var EUCAN_API_BASE_CONFIGURED = ''; // @API_BASE@|var EUCAN_API_BASE_CONFIGURED = '${API_BASE}'; // @API_BASE@|" \
+            /usr/share/nginx/html/js/cookieOperation.js \
+        && grep -q "EUCAN_API_BASE_CONFIGURED = '${API_BASE}'" /usr/share/nginx/html/js/cookieOperation.js; \
+    fi \
+    && if grep -rl --include='*.js' --include='*.html' 'eucan.ddns.net' /usr/share/nginx/html/; then \
+        echo "production host still referenced in the files above" >&2; exit 1; \
+    fi
 
 RUN rm /etc/nginx/conf.d/default.conf
 COPY nginx.conf /etc/nginx/conf.d/
