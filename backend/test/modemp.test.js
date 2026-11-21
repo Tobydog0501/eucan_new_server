@@ -4,7 +4,17 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { startServer, session } = require('../testlib/harness');
+const path = require('node:path');
+const { startServer, session, BUILD_DIR } = require('../testlib/harness');
+const { verifyPassword, isPasswordHash } = require(path.join(BUILD_DIR, 'plugins', 'password.js'));
+
+/** The stored value is a hash (never the password itself) and matches `password`. */
+async function assertStoredPassword(server, id, password) {
+  const stored = server.withDb((db) => db.prepare('SELECT pwd FROM userinfo WHERE id = ?').get(id)).pwd;
+  assert.ok(isPasswordHash(stored), `${id}: stored password is not a hash`);
+  assert.notEqual(stored, password);
+  assert.equal((await verifyPassword(password, stored)).ok, true, `${id}: stored hash does not match`);
+}
 
 function profile(id, extra = {}) {
   return {
@@ -44,7 +54,11 @@ test('/modemp: a non-root admin can still edit employees', async () => {
   try {
     const res = await server.post('/modemp', { ...session('admin1'), ...profile('emp1', { pwd: 'new-emp1', name: 'Renamed' }) });
     assert.equal(res.status, 200, res.text);
-    assert.deepEqual(row(server, 'emp1'), { id: 'emp1', pwd: 'new-emp1', type: 'employee', status: 1 });
+    const { pwd, ...rest } = row(server, 'emp1');
+    assert.deepEqual(rest, { id: 'emp1', type: 'employee', status: 1 });
+    await assertStoredPassword(server, 'emp1', 'new-emp1');
+    assert.equal((await server.post('/login', { account: 'emp1', pwd: 'new-emp1' })).status, 200);
+    assert.equal((await server.post('/login', { account: 'emp1', pwd: 'fixture-emp1' })).status, 403);
   } finally {
     await server.stop();
   }
@@ -61,7 +75,7 @@ test('/modemp: root can grant admin, but cannot demote or deactivate root', asyn
     assert.deepEqual(row(server, 'root'), { id: 'root', pwd: 'fixture-root', type: 'admin', status: 1 });
 
     assert.equal((await server.post('/modemp', { ...session('root'), ...profile('root', { type: 'admin', pwd: 'new-root' }) })).status, 200);
-    assert.equal(row(server, 'root').pwd, 'new-root');
+    await assertStoredPassword(server, 'root', 'new-root');
   } finally {
     await server.stop();
   }

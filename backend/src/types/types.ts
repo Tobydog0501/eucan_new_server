@@ -18,6 +18,9 @@ export interface userinfo extends table {
   leaveDate: string | null
 }
 
+/** A userinfo row without the stored password; the only shape that may be sent to clients. */
+export type userinfo_public = Omit<userinfo, 'pwd'>;
+
 export interface logininfo extends table {
   id: string,
   sKey: string,

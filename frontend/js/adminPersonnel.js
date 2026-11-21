@@ -78,7 +78,6 @@ $(function () {
             pageData.forEach((d) => {
                 const tableRow = $("<tr>").append(
                     $("<td>").html(d.id),
-                    $("<td>").html(d.pwd),
                     $("<td>").html(d.name),
                     $("<td>").html(d.joinTime),
                     $("<td>").html(d.email),
