@@ -1,8 +1,8 @@
 'use strict';
 
 // Make-up punch requests (employee page 補打卡申請, admin page 補登審核): the
-// missing-punch cards the page lists, filing from a card (only the reason is
-// typed; date, half and time come from the card), who may see and review
+// missing-punch cards the page lists, filing from a card (the actual time and
+// the reason are typed; date and half come from the card), who may see and review
 // what, that only an approval creates a punch (flagged as make-up) which then
 // counts in the views and the month sheet, the audit trail, and the migration.
 
@@ -73,7 +73,7 @@ const punches = (server, id = 'emp1') => rows(server, 'SELECT * FROM clockinreco
 const audit = (server) => rows(server, 'SELECT request_id, action, actor_id, actor_name, reason, acted_at FROM makeup_audit ORDER BY audit_id');
 const cardsOn = (res, date) => res.json.missing.filter((c) => c.date === date).map((c) => c.kind);
 
-const IN_FORM = { date: DATE, kind: 'in', reason: '忘記打卡' };
+const IN_FORM = { date: DATE, kind: 'in', time: '08:45', reason: '忘記打卡' };
 
 test('makeup mine: one card per missing half on recent working days, minus punches and leave', async () => {
   await withServer(async (server) => {
@@ -94,8 +94,9 @@ test('makeup mine: one card per missing half on recent working days, minus punch
     assert.deepEqual(cardsOn(res, OTHER_DATE), ['in', 'out']);
     assert.deepEqual(cardsOn(res, THIRD_DATE), []);
     const card = res.json.missing.find((c) => c.date === OTHER_DATE && c.kind === 'in');
-    assert.deepEqual(card, { date: OTHER_DATE, kind: 'in', kindLabel: '上班', time: '08:30' });
-    assert.deepEqual(res.json.missing.find((c) => c.date === DATE), { date: DATE, kind: 'out', kindLabel: '下班', time: '17:30' });
+    assert.deepEqual(card, { date: OTHER_DATE, kind: 'in', kindLabel: '上班', time: '08:30', clockin: null, clockout: null });
+    // The recorded other half comes along, for checking the entered time against it.
+    assert.deepEqual(res.json.missing.find((c) => c.date === DATE), { date: DATE, kind: 'out', kindLabel: '下班', time: '17:30', clockin: '08:20', clockout: null });
     // Never today, a weekend or anything before the look-back window; newest first.
     const dates = res.json.missing.map((c) => c.date);
     assert.ok(!dates.includes(TODAY) && !dates.includes(RECENT_WEEKEND));
@@ -111,9 +112,24 @@ test('makeup mine: one card per missing half on recent working days, minus punch
   });
 });
 
-test('makeup apply: only the reason is taken from the employee; date and half must be a card; times come from the shift', async () => {
+test('makeup apply: the actual time and reason come from the employee; date and half must be a card', async () => {
   await withServer(async (server) => {
     const bad = [
+      [{ ...IN_FORM, time: undefined }, 400, '請填寫實際上班時間'],
+      [{ ...IN_FORM, time: '' }, 400, '請填寫實際上班時間'],
+      [{ ...IN_FORM, kind: 'out', time: '' }, 400, '請填寫實際下班時間'],
+      [{ ...IN_FORM, time: 830 }, 400, '請填寫實際上班時間'],
+      [{ ...IN_FORM, time: '8:45' }, 400, 'HH:MM'],
+      [{ ...IN_FORM, time: '24:00' }, 400, 'HH:MM'],
+      [{ ...IN_FORM, time: '08:60' }, 400, 'HH:MM'],
+      [{ ...IN_FORM, time: '08:45:00' }, 400, 'HH:MM'],
+      [{ ...IN_FORM, time: `${DATE} 08:45` }, 400, 'HH:MM'],
+      [{ ...IN_FORM, time: `${OTHER_DATE}T08:45` }, 400, 'HH:MM'],
+      // Plausibility with the other half missing too: a clock-in after the shift end, a clock-out before its start.
+      [{ ...IN_FORM, time: '17:30' }, 400, '須早於 17:30'],
+      [{ ...IN_FORM, time: '22:00' }, 400, '須早於 17:30'],
+      [{ ...IN_FORM, kind: 'out', time: '08:30' }, 400, '須晚於 08:30'],
+      [{ ...IN_FORM, kind: 'out', time: '03:00' }, 400, '須晚於 08:30'],
       [{ ...IN_FORM, reason: '' }, 400, '原因'],
       [{ ...IN_FORM, reason: '   ' }, 400, '原因'],
       [{ ...IN_FORM, reason: 'x'.repeat(201) }, 400, '原因'],
@@ -135,12 +151,26 @@ test('makeup apply: only the reason is taken from the employee; date and half mu
     assert.equal((await apply(server, 'emp1', { ...IN_FORM, date: OTHER_DATE })).status, 409);
     assert.equal((await apply(server, 'emp1', { ...IN_FORM, cookie: 'bbbbbbbbbb' })).status, 403);
     assert.equal((await apply(server, 'emp1', { date: DATE, kind: 'in' })).status, 400);
+    assert.equal((await apply(server, 'emp1', { date: DATE, kind: 'in', reason: '忘記打卡' })).status, 400);
+    // Against a recorded other half: OTHER_DATE has a clock-in at 08:25, so the clock-out must be later.
+    for (const time of ['08:25', '08:00']) {
+      const res = await apply(server, 'emp1', { date: OTHER_DATE, kind: 'out', time, reason: '忘記打卡' });
+      assert.equal(res.status, 400, res.text);
+      assert.match(res.json.message, /實際下班時間須晚於當日上班時間 08:25/);
+    }
+    // ...and a clock-in must be earlier than a recorded clock-out.
+    punch(server, 'emp1', THIRD_DATE, null, '12:00');
+    for (const time of ['12:00', '13:00']) {
+      const res = await apply(server, 'emp1', { date: THIRD_DATE, kind: 'in', time, reason: '忘記打卡' });
+      assert.equal(res.status, 400, res.text);
+      assert.match(res.json.message, /實際上班時間須早於當日下班時間 12:00/);
+    }
     assert.deepEqual(rows(server, 'SELECT * FROM makeup_request'), []);
     assert.deepEqual(audit(server), []);
 
-    // A good one: name, department and date applied are the server's; times sent
-    // by the client are ignored and the shift time of that half is used.
-    const res = await apply(server, 'emp1', { ...IN_FORM, clockin: '06:00', clockout: '23:00', name: 'someone else', department: 'X' });
+    // A good one: name, department and date applied are the server's; the entered
+    // time is stored for the card's half, and clockin/clockout fields are ignored.
+    const res = await apply(server, 'emp1', { ...IN_FORM, time: ' 08:45 ', clockin: '06:00', clockout: '23:00', name: 'someone else', department: 'X' });
     assert.equal(res.status, 201, res.text);
     const r = res.json.request;
     assert.equal(r.state, 'pending');
@@ -148,7 +178,7 @@ test('makeup apply: only the reason is taken from the employee; date and half mu
     assert.equal(r.name, 'Employee One');
     assert.equal(r.department, 'JEFF');
     assert.equal(r.kindLabel, '上班未打卡');
-    assert.equal(r.clockin, '08:30');
+    assert.equal(r.clockin, '08:45');
     assert.equal(r.clockout, null);
     assert.match(r.appliedAt, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
 
@@ -157,9 +187,12 @@ test('makeup apply: only the reason is taken from the employee; date and half mu
     const again = await apply(server, 'emp1', IN_FORM);
     assert.equal(again.status, 409);
     assert.match(again.json.message, /已有待審或已核准的同類補打卡申請/);
-    const out = await apply(server, 'emp1', { date: DATE, kind: 'out', reason: '忘記打下班' });
+    // A late night clock-out is fine (any time after the start of the shift).
+    const out = await apply(server, 'emp1', { date: DATE, kind: 'out', time: '21:15', reason: '忘記打下班' });
     assert.equal(out.status, 201, out.text);
-    assert.equal(out.json.request.clockout, '17:30');
+    assert.equal(out.json.request.clockout, '21:15');
+    assert.deepEqual(rows(server, 'SELECT kind, clockin, clockout FROM makeup_request ORDER BY request_id'),
+      [{ kind: 'in', clockin: '08:45', clockout: null }, { kind: 'out', clockin: null, clockout: '21:15' }]);
     assert.deepEqual(cardsOn(await mine(server, 'emp1'), DATE), []);
 
     // Pending requests create no punch.
@@ -236,7 +269,7 @@ test('makeup review: rejecting creates no punch; approving creates a make-up pun
     // Generate the month sheet first, so the approval has to refresh it.
     assert.equal((await server.post('/clrecord', { ...session('admin1'), year: YEAR, month: MONTH })).status, 200, server.output());
 
-    const rejected = (await apply(server, 'emp1', { date: OTHER_DATE, kind: 'in', reason: '出差' })).json.request.requestId;
+    const rejected = (await apply(server, 'emp1', { date: OTHER_DATE, kind: 'in', time: '09:10', reason: '出差' })).json.request.requestId;
     const approved = (await apply(server, 'emp1', IN_FORM)).json.request.requestId;
 
     // Reject needs a reason.
@@ -253,13 +286,18 @@ test('makeup review: rejecting creates no punch; approving creates a make-up pun
     assert.equal((await review(server, 'admin1', rejected, 'approve')).status, 409);
     assert.deepEqual(punches(server).filter((p) => p.date === OTHER_DATE), []);
 
-    // Approve.
+    // The review page shows the time the employee entered, not the shift time.
+    const pendingList = await server.get('/api/makeup/requests', { ...session('admin1'), state: 'pending' });
+    const shown = pendingList.json.requests.find((r) => r.requestId === approved);
+    assert.deepEqual([shown.clockin, shown.clockout], ['08:45', null]);
+
+    // Approve: the punch gets the entered time.
     const ok = await review(server, 'admin1', approved, 'approve');
     assert.equal(ok.status, 200, ok.text);
     assert.equal(ok.json.status, 'approved');
     assert.equal(ok.json.masterRefreshed, true);
     const day = punches(server).filter((p) => p.date === DATE);
-    assert.deepEqual(day.map((p) => [p.num, p.clockin, p.clockout, p.makeup_request_id]), [[1, null, '17:40', null], [2, '08:30', null, approved]]);
+    assert.deepEqual(day.map((p) => [p.num, p.clockin, p.clockout, p.makeup_request_id]), [[1, null, '17:40', null], [2, '08:45', null, approved]]);
     assert.equal((await review(server, 'admin1', approved, 'approve')).status, 409);
     assert.equal(punches(server).filter((p) => p.date === DATE).length, 2);
     // The approved punch fills the half: no card for DATE any more.
@@ -268,12 +306,12 @@ test('makeup review: rejecting creates no punch; approving creates a make-up pun
     // Views, the month sheet and the personal PDF all include it, flagged as make-up.
     const view = await server.get('/api/clockin/view', { ...session('admin1'), year: YEAR, month: MONTH, day: Number(DATE.slice(8)) });
     const rec = view.json.records.find((r) => r.id === 'emp1');
-    assert.deepEqual([rec.clockin, rec.clockout, rec.makeup], ['08:30', '17:40', true]);
+    assert.deepEqual([rec.clockin, rec.clockout, rec.makeup], ['08:45', '17:40', true]);
     const month = await server.get('/api/clockin/employee', { ...session('admin1'), year: YEAR, month: MONTH, id: 'emp1' });
     const d = month.json.days.find((x) => x.date === DATE);
-    assert.deepEqual([d.clockin, d.clockout, d.makeup], ['08:30', '17:40', true]);
+    assert.deepEqual([d.clockin, d.clockout, d.makeup], ['08:45', '17:40', true]);
     assert.equal(month.json.days.find((x) => x.date === OTHER_DATE).hasRecord, false);
-    assert.deepEqual(rows(server, 'SELECT clockin, clockout FROM clockin_master_row WHERE id = ? AND date = ?', 'emp1', DATE), [{ clockin: '08:30', clockout: '17:40' }]);
+    assert.deepEqual(rows(server, 'SELECT clockin, clockout FROM clockin_master_row WHERE id = ? AND date = ?', 'emp1', DATE), [{ clockin: '08:45', clockout: '17:40' }]);
     const pdf = await server.get('/api/clockin/personal', { ...session('admin1'), year: YEAR, month: MONTH, id: 'emp1' });
     assert.equal(pdf.status, 200);
     const list = await server.get('/api/clockin/punches', { ...session('admin1'), id: 'emp1', date: DATE });
@@ -431,15 +469,15 @@ test('makeup across a year boundary: early in January the cards reach back into 
     assert.ok(!dates.includes(beforeWindow), dates.join());
     assert.deepEqual([...dates].sort().reverse(), dates, 'newest first across the year change');
 
-    const filed = await fresh(() => apply(server, 'emp1', { date: lastDec, kind: 'out', reason: '忘記打卡' }));
+    const filed = await fresh(() => apply(server, 'emp1', { date: lastDec, kind: 'out', time: '18:20', reason: '忘記打卡' }));
     assert.equal(filed.status, 201, filed.text);
-    const outside = await fresh(() => apply(server, 'emp1', { date: beforeWindow, kind: 'in', reason: '忘記打卡' }));
+    const outside = await fresh(() => apply(server, 'emp1', { date: beforeWindow, kind: 'in', time: '08:40', reason: '忘記打卡' }));
     assert.equal(outside.status, 409, 'outside the window');
     const approved = await fresh(() => review(server, 'admin1', filed.json.request.requestId, 'approve'));
     assert.equal(approved.status, 200, approved.text);
     assert.deepEqual(cardsOn(await fresh(() => mine(server, 'emp1')), lastDec), []);
     const made = punches(server).filter((p) => p.date === lastDec);
-    assert.ok(made.some((p) => p.clockout === '17:30'), JSON.stringify(made));
+    assert.ok(made.some((p) => p.clockout === '18:20'), JSON.stringify(made));
     assert.equal(await server.alive(), true, server.output());
   } finally {
     await server.stop();

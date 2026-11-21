@@ -40,12 +40,12 @@ export function missedPunchBody(name: string, date: string, link: string): strin
   return [
     `員工 ${name}您好：`,
     `經系統查核，發現您於 ${noticeDateText(date)} 有未打卡紀錄，請確認當日出勤狀況。`,
-    '如因忘記打卡、系統異常或其他特殊原因而未完成打卡，請儘速填寫補登申請，並註明實際上班或下班時間及未打卡原因，由人資單位協助辦理補登作業。',
+    '如因忘記打卡、系統異常或其他特殊原因而未完成打卡，請儘速填寫補打卡申請，並註明實際上班或下班時間及未打卡原因，由人資單位協助辦理補登作業。',
     '請同仁確實落實每日上下班打卡，以維護出勤紀錄之正確性。',
     '感謝您的配合！',
     '<此信為系統自動發送，請勿回覆>',
     '',
-    `補登申請頁：${link}`,
+    `補打卡申請頁：${link}`,
   ].join('\n');
 }
 
@@ -114,7 +114,8 @@ function expectedToPunch(user: Person, date: string): boolean {
   return true;
 }
 
-export type MissedHalves = { user: Person; missIn: boolean; missOut: boolean };
+/** `clockin` / `clockout` are the day's recorded times (null when missing). */
+export type MissedHalves = { user: Person; missIn: boolean; missOut: boolean; clockin: string | null; clockout: string | null };
 
 /** Loads the punches of one month (year YYYY, month MM). */
 export type MonthPunches = (year: string, month: string) => ReturnType<sql['clockinRecord']>;
@@ -150,7 +151,7 @@ export async function missedHalvesOn(
     const row = aggregateDay(punches.filter((p) => p.id === user.id), edits.get(user.id) || null, (user.name || '').trim());
     const missIn = needIn && !(row && row.clockin);
     const missOut = needOut && !(row && row.clockout);
-    if (missIn || missOut) out.push({ user, missIn, missOut });
+    if (missIn || missOut) out.push({ user, missIn, missOut, clockin: row ? row.clockin : null, clockout: row ? row.clockout : null });
   }
   return out;
 }
@@ -176,7 +177,12 @@ export async function findMissedPunches(sqlPlugin: sql, date: string): Promise<M
 /** How many days back (ending yesterday) the 補打卡申請 page looks for missing punches. */
 export const MAKEUP_LOOKBACK_DAYS = 31;
 
-export type MissingPunchCard = { date: string; kind: 'in' | 'out' };
+/**
+ * One card. `clockin` / `clockout` are what that day already has recorded
+ * (the missing half is always null): the time the employee enters for the
+ * missing half is checked against the other one.
+ */
+export type MissingPunchCard = { date: string; kind: 'in' | 'out'; clockin: string | null; clockout: string | null };
 
 /** The Taipei date `days` days before `date` (YYYY-MM-DD). */
 function daysBefore(date: string, days: number): string {
@@ -223,8 +229,9 @@ export async function missingPunchCards(
     const [found] = await missedHalvesOn(sqlPlugin, date, [user], leaves, monthPunches);
     if (!found) continue;
     const filed = sqlPlugin.activeMakeupKindsOn(userId, date);
-    if (found.missIn && !filed.some((kind) => kindsOverlap(kind, 'in'))) cards.push({ date, kind: 'in' });
-    if (found.missOut && !filed.some((kind) => kindsOverlap(kind, 'out'))) cards.push({ date, kind: 'out' });
+    const recorded = { clockin: found.missIn ? null : found.clockin, clockout: found.missOut ? null : found.clockout };
+    if (found.missIn && !filed.some((kind) => kindsOverlap(kind, 'in'))) cards.push({ date, kind: 'in', ...recorded });
+    if (found.missOut && !filed.some((kind) => kindsOverlap(kind, 'out'))) cards.push({ date, kind: 'out', ...recorded });
   }
   return cards;
 }

@@ -1,5 +1,5 @@
 // 補打卡申請（員工端）：列出自己應打卡卻沒有打卡（也沒有請假）的時段，
-// 每張卡片按「申請補打卡」只需填寫未打卡原因；日期、上班／下班由卡片決定。
+// 每張卡片按「申請補打卡」填寫實際上班／下班時間與未打卡原因；日期、上班／下班由卡片決定。
 // 下方列出自己申請的審核狀態。
 $(function () {
     const API = EUCAN_API_BASE;
@@ -85,17 +85,22 @@ $(function () {
         current = card;
         $("#applyDate").text(dateLabel(card.date));
         $("#applyKind").text(`${card.kindLabel}未打卡`);
-        $("#applyTime").text(card.time);
+        $("#actualTimeLabel").text(`實際${card.kindLabel}時間`);
+        $("#actualTime").val("");
+        const other = card.kind === "in" ? card.clockout && `當日下班 ${card.clockout}` : card.clockin && `當日上班 ${card.clockin}`;
+        $("#actualTimeHint").text(`應打卡 ${card.time}${other ? `；${other}` : ""}`);
         $("#reason").val("");
         $("#formError").text("");
         modal.show();
     }
-    document.getElementById("applyModal").addEventListener("shown.bs.modal", () => $("#reason").trigger("focus"));
+    document.getElementById("applyModal").addEventListener("shown.bs.modal", () => $("#actualTime").trigger("focus"));
 
     $("#applyForm").on("submit", function (event) {
         event.preventDefault();
         if (!current) return;
         $("#formError").text("");
+        const time = ($("#actualTime").val() || "").slice(0, 5);
+        if (!time) return $("#formError").text(`請填寫實際${current.kindLabel}時間`);
         const reason = $("#reason").val().trim();
         if (!reason) return $("#formError").text("請填寫未打卡原因");
 
@@ -105,7 +110,7 @@ $(function () {
             type: "POST",
             dataType: "json",
             headers: { "Content-Type": "application/json" },
-            data: JSON.stringify({ account: userId, cookie: sessionKey, date: current.date, kind: current.kind, reason }),
+            data: JSON.stringify({ account: userId, cookie: sessionKey, date: current.date, kind: current.kind, time, reason }),
         }).done(() => {
             modal.hide();
             alert("已送出補打卡申請，請等候主管審核");
