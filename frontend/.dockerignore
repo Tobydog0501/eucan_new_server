@@ -25,5 +25,7 @@ docker-compose*.yml
 run.bat
 .gitignore
 logs/
+# Mounted by docker-compose-test.yml, not baked into the image.
+nginx.test.conf
 # nginx.conf cannot be listed here because the Dockerfiles COPY it into
 # /etc/nginx/conf.d/; they delete the copy that lands in the web root instead.
