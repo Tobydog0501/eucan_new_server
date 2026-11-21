@@ -3,7 +3,7 @@
 // The cards on the employee page 補打卡申請 (missingPunchCards): same
 // detection as the missed-punch notice mail, one card per missing half, with
 // pending leave also excusing and halves already filed (pending or approved)
-// hidden. Plus the card validation helpers. In-process, fixture data only.
+// hidden. Plus the card validation helpers (entered time and its plausibility). In-process, fixture data only.
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -120,23 +120,65 @@ test('missing-punch cards match the notice mail for the same day', async () => {
   });
 });
 
-test('card validation: only date, in/out and a reason; times come from the shift slot', async () => {
-  await withCards(async ({ makeup, job }) => {
-    const ok = makeup.validateMakeupCard({ date: '2026-03-13', kind: 'out', reason: '  忘記  ', clockout: '23:59' }, TODAY);
-    assert.deepEqual(ok, { ok: true, value: { date: '2026-03-13', kind: 'out', reason: '忘記' } });
+test('card validation: date and in/out from the card, the actual time (HH:MM) and a reason from the employee', async () => {
+  await withCards(async ({ makeup }) => {
+    const ok = makeup.validateMakeupCard({ date: '2026-03-13', kind: 'out', time: ' 18:05 ', reason: '  忘記  ', clockout: '23:59' }, TODAY);
+    assert.deepEqual(ok, { ok: true, value: { date: '2026-03-13', kind: 'out', time: '18:05', reason: '忘記' } });
     for (const body of [
-      { date: '2026-03-16', kind: 'in', reason: 'x' },
-      { date: '2026-02-30', kind: 'in', reason: 'x' },
-      { date: 20260313, kind: 'in', reason: 'x' },
-      { date: '2026-03-13', kind: 'both', reason: 'x' },
-      { date: '2026-03-13', kind: 'in', reason: '' },
-      { date: '2026-03-13', kind: 'in', reason: 'x'.repeat(makeup.MAKEUP_REASON_MAX + 1) },
+      { date: '2026-03-16', kind: 'in', time: '08:40', reason: 'x' },
+      { date: '2026-02-30', kind: 'in', time: '08:40', reason: 'x' },
+      { date: 20260313, kind: 'in', time: '08:40', reason: 'x' },
+      { date: '2026-03-13', kind: 'both', time: '08:40', reason: 'x' },
+      { date: '2026-03-13', kind: 'in', time: '08:40', reason: '' },
+      { date: '2026-03-13', kind: 'in', time: '08:40', reason: 'x'.repeat(makeup.MAKEUP_REASON_MAX + 1) },
+      { date: '2026-03-13', kind: 'in', reason: 'x' },
+      { date: '2026-03-13', kind: 'in', time: null, reason: 'x' },
+      { date: '2026-03-13', kind: 'in', time: 840, reason: 'x' },
+      { date: '2026-03-13', kind: 'in', time: '8:40', reason: 'x' },
+      { date: '2026-03-13', kind: 'in', time: '24:00', reason: 'x' },
+      { date: '2026-03-13', kind: 'in', time: '08:40:00', reason: 'x' },
+      { date: '2026-03-13', kind: 'in', time: '2026-03-12 08:40', reason: 'x' },
     ]) {
       assert.equal(makeup.validateMakeupCard(body, TODAY).ok, false, JSON.stringify(body));
     }
+    assert.match(makeup.validateMakeupCard({ date: '2026-03-13', kind: 'in', reason: 'x' }, TODAY).message, /請填寫實際上班時間/);
+    assert.match(makeup.validateMakeupCard({ date: '2026-03-13', kind: 'out', time: '7pm', reason: 'x' }, TODAY).message, /實際下班時間須為 HH:MM/);
+    // The stored request carries the entered time for the card's half only.
+    assert.deepEqual(makeup.makeupFromCard({ date: '2026-03-13', kind: 'in', time: '08:52', reason: 'r' }), { date: '2026-03-13', kind: 'in', clockin: '08:52', clockout: null, reason: 'r' });
+    assert.deepEqual(makeup.makeupFromCard({ date: '2026-03-13', kind: 'out', time: '19:10', reason: 'r' }), { date: '2026-03-13', kind: 'out', clockin: null, clockout: '19:10', reason: 'r' });
+  });
+});
+
+test('card time plausibility: around the recorded other half, else the shift bounds', async () => {
+  await withCards(async ({ makeup, job }) => {
     const slot = { start: job.WORK_START, end: job.WORK_END };
-    assert.deepEqual(makeup.makeupFromCard({ date: '2026-03-13', kind: 'in', reason: 'r' }, slot), { date: '2026-03-13', kind: 'in', clockin: '08:30', clockout: null, reason: 'r' });
-    assert.deepEqual(makeup.makeupFromCard({ date: '2026-03-13', kind: 'out', reason: 'r' }, slot), { date: '2026-03-13', kind: 'out', clockin: null, clockout: '17:30', reason: 'r' });
+    const none = { clockin: null, clockout: null };
+    const check = (kind, time, recorded = none) => makeup.checkMakeupTime({ kind, time }, recorded, slot).ok;
+    // Nothing recorded: clock-in before 17:30, clock-out after 08:30.
+    assert.equal(check('in', '00:00'), true);
+    assert.equal(check('in', '17:29'), true);
+    assert.equal(check('in', '17:30'), false);
+    assert.equal(check('out', '08:31'), true);
+    assert.equal(check('out', '23:59'), true);
+    assert.equal(check('out', '08:30'), false);
+    // A recorded other half replaces the shift bound.
+    assert.equal(check('in', '18:00', { clockin: null, clockout: '20:00' }), true);
+    assert.equal(check('in', '20:00', { clockin: null, clockout: '20:00' }), false);
+    assert.equal(check('out', '07:00', { clockin: '06:30', clockout: null }), true);
+    assert.equal(check('out', '06:30', { clockin: '06:30', clockout: null }), false);
+    assert.match(makeup.checkMakeupTime({ kind: 'out', time: '06:00' }, { clockin: '06:30', clockout: null }, slot).message, /須晚於當日上班時間 06:30/);
+  });
+});
+
+test('missing-punch cards carry the recorded other half', async () => {
+  await withCards(async ({ cards }) => {
+    assert.deepEqual(await cards('emp1'), [
+      { date: '2026-03-13', kind: 'in', clockin: null, clockout: null },
+      { date: '2026-03-13', kind: 'out', clockin: null, clockout: null },
+      { date: '2026-03-12', kind: 'out', clockin: '08:20', clockout: null },
+    ]);
+    const nov30 = (await cards('emp6', { today: '2026-12-02', lookbackDays: 3 })).find((c) => c.date === '2026-11-30');
+    assert.deepEqual(nov30, { date: '2026-11-30', kind: 'in', clockin: null, clockout: '17:40' });
   });
 });
 
@@ -165,7 +207,7 @@ test('missing-punch cards across a year boundary: same as the mail, punches load
 
 test('card validation: the reason may hold line breaks and tabs but no other control characters', async () => {
   await withCards(async ({ makeup }) => {
-    const card = { date: '2026-03-13', kind: 'in' };
+    const card = { date: '2026-03-13', kind: 'in', time: '08:40' };
     assert.equal(makeup.validateMakeupCard({ ...card, reason: '忘記\n打卡\t了\r\n說明' }, TODAY).ok, true);
     for (const bad of ['\u0000', '\u0007', '\u001b[31m', '\u000b', '\u000c', '\u007f']) {
       const res = makeup.validateMakeupCard({ ...card, reason: `忘記${bad}打卡` }, TODAY);

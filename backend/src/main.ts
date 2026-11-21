@@ -10,8 +10,9 @@ import { startArchiveSchedule } from './plugins/archive_schedule';
 import { aggregateDay, ClockEdit, decideEdit, isRealDate, taipeiToday } from './plugins/clockin_sheet';
 import { personalClockinPdf, readMasterClockinPdf, writeClockinMaster } from './plugins/clockin_archive';
 import { canDeletePunch, canRestorePunch, canReviewMakeup } from './plugins/account_rules';
-import { departmentOf, kindsOverlap, MAKEUP_KIND_LABELS, MAKEUP_REASON_MAX, makeupFromCard, validateMakeupCard } from './plugins/makeup';
+import { departmentOf, kindsOverlap, MAKEUP_KIND_LABELS, MAKEUP_REASON_MAX, checkMakeupTime, makeupFromCard, validateMakeupCard } from './plugins/makeup';
 import { missingPunchCards, startMissedPunchSchedule, WORK_END, WORK_START } from './plugins/missed_punch';
+import type { MissingPunchCard } from './plugins/missed_punch';
 import type { MakeupRequestRow, MakeupState } from './plugins/sql';
 import { onDownloadDone } from './plugins/http_util';
 import path from 'path';
@@ -687,12 +688,16 @@ function makeupView(row: MakeupRequestRow) {
 
 const MISSING_KIND_LABELS: Record<'in' | 'out', string> = { in: '上班', out: '下班' };
 
-function missingCardView(card: { date: string, kind: 'in' | 'out' }) {
+function missingCardView(card: MissingPunchCard) {
   return {
     date: card.date,
     kind: card.kind,
     kindLabel: MISSING_KIND_LABELS[card.kind],
+    // The shift time of the missing half, as the default for the time input.
     time: card.kind === 'in' ? WORK_START : WORK_END,
+    // The day's other half, if recorded (the entered time must fit around it).
+    clockin: card.clockin,
+    clockout: card.clockout,
   };
 }
 
@@ -750,18 +755,24 @@ app.post('/api/makeup/apply', async (req: Request, res: Response) => {
     // Only a card the page shows may be filed: date and half must be a missing punch of the caller.
     const card = checked.value;
     const missing = await missingPunchCards(sqlPlugin, user.id, { today });
-    if (!missing.some((m) => m.date === card.date && m.kind === card.kind)) {
+    const match = missing.find((m) => m.date === card.date && m.kind === card.kind);
+    if (!match) {
       const filed = sqlPlugin.activeMakeupKindsOn(user.id, card.date).some((kind) => kindsOverlap(kind, card.kind));
       res.status(409).json({ message: filed ? '這一天已有待審或已核准的同類補打卡申請' : '這一天沒有需要補打卡的紀錄' });
       return;
     }
-    const input = makeupFromCard(card, { start: WORK_START, end: WORK_END });
+    const plausible = checkMakeupTime(card, match, { start: WORK_START, end: WORK_END });
+    if (!plausible.ok) {
+      res.status(400).json({ message: plausible.message });
+      return;
+    }
+    const input = makeupFromCard(card);
     const result = sqlPlugin.createMakeupRequest({ id: user.id, name: user.name, department: departmentOf(user.mgroup) }, input);
     if (result === 'duplicate') {
       res.status(409).json({ message: '這一天已有待審或已核准的同類補打卡申請' });
       return;
     }
-    log.logFormat(`${account} filed make-up request #${result} for ${input.date} (${input.kind}).`);
+    log.logFormat(`${account} filed make-up request #${result} for ${input.date} (${input.kind} ${card.time}).`);
     res.status(201).json({ status: 'pending', request: makeupView(sqlPlugin.getMakeupRequest(result) as MakeupRequestRow) });
   } catch (e) {
     log.logFormat((e as string), new Date());

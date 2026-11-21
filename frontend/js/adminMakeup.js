@@ -71,7 +71,7 @@ $(function () {
             }
         } else {
             const times = [r.clockin && `上班 ${r.clockin}`, r.clockout && `下班 ${r.clockout}`].filter(Boolean).join("、");
-            if (!confirm(`確定核准 ${r.name} ${r.date} 的補登（${times}）？核准後會產生補登打卡紀錄。`)) return;
+            if (!confirm(`確定核准 ${r.name} ${r.date} 的補打卡申請（實際 ${times}）？核准後會產生補登打卡紀錄。`)) return;
         }
         $.ajax({
             url: `${API}/api/makeup/review`,

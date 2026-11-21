@@ -354,7 +354,7 @@ Soft-delete one punch (admins; punches of admin or built-in accounts: root only)
 ![POST](https://img.shields.io/badge/POST-FF4136?style=flat-square&logo=appveyor&logoColor=white) `/api/makeup/apply`
 
 **Description:**  
-`mine` returns the caller's own requests and missing punches only (no parameter selects anybody else). `missing` lists one card per missing half (clock-in or clock-out) on each working day of the last 31 days up to yesterday (Taipei), newest first, using the same detection as the missed-punch notice; pending leave excuses too, and halves with a pending or approved request are left out. `apply` files a pending request for one of those cards; it never creates a punch. Date and half must match a current card (otherwise 409); the time stored is the shift time of that half (08:30 / 17:30), and any time fields in the body are ignored. Name and department come from the account.
+`mine` returns the caller's own requests and missing punches only (no parameter selects anybody else). `missing` lists one card per missing half (clock-in or clock-out) on each working day of the last 31 days up to yesterday (Taipei), newest first, using the same detection as the missed-punch notice; pending leave excuses too, and halves with a pending or approved request are left out. `apply` files a pending request for one of those cards; it never creates a punch. Date and half must match a current card (otherwise 409). `time` is the actual time of that half on the card's date, as `HH:MM` (no date, no seconds); it must be earlier than the day's recorded clock-out (for `in`) or later than the recorded clock-in (for `out`), and when that other half is missing too, earlier than 17:30 (`in`) or later than 08:30 (`out`). That time is stored and is what an approval puts on the punch; `clockin` / `clockout` fields in the body are ignored. Name and department come from the account.
 
 **`apply` body:**
 ```json
@@ -363,14 +363,15 @@ Soft-delete one punch (admins; punches of admin or built-in accounts: root only)
   "cookie": "string",
   "date": "YYYY-MM-DD",   // The card's date (before today, Taipei).
   "kind": "in" | "out",   // The card's half.
+  "time": "HH:MM",        // Required: the actual clock-in / clock-out time on that date.
   "reason": "string"      // Required, at most 200 characters.
 }
 ```
 
 **Response:**
-- `mine` **200 OK**: `{ "applicant": { "name", "department" }, "today", "missing": [{ "date", "kind": "in" | "out", "kindLabel": "上班" | "下班", "time": "08:30" | "17:30" }], "requests": [{ "requestId", "name", "department", "date", "kind", "kindLabel", "clockin", "clockout", "reason", "appliedAt", "state", "stateLabel", "reviewerName", "reviewedAt", "reviewNote" }] }`
+- `mine` **200 OK**: `{ "applicant": { "name", "department" }, "today", "missing": [{ "date", "kind": "in" | "out", "kindLabel": "上班" | "下班", "time": "08:30" | "17:30", "clockin", "clockout" }], "requests": [{ "requestId", "name", "department", "date", "kind", "kindLabel", "clockin", "clockout", "reason", "appliedAt", "state", "stateLabel", "reviewerName", "reviewedAt", "reviewNote" }] }`
 - `apply` **201 Created**: `{ "status": "pending", "request": {...} }`
-- **400 Bad Request**: `{ "message" }` saying which field is wrong.
+- **400 Bad Request**: `{ "message" }` saying which field is wrong, or that the time does not fit the day's other half.
 - **403 Forbidden**: Not logged in.
 - **409 Conflict**: A pending or approved request already covers the same half of that day, or that date and half is not a missing punch.
 
