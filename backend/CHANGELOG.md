@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - Admins can soft-delete a mistaken clock-in punch (reason required, audited); root can see and restore deleted punches.
 - Idempotent schema migrations, run at start-up or with `npm run migrate`.
+- Daily missed-punch notice (00:00 Asia/Taipei, previous day); written to a local outbox unless `MISSED_PUNCH_MAIL_ENABLED` is on (`MAIL_TEST_MODE=1` or `MAIL_DISABLED=1` keeps it in the outbox).
+- Make-up punch (補登) requests: employees apply, admins approve or reject (audited); approval adds a punch flagged as make-up.
 
 ## [1.6.2] 2025-11-17
 

@@ -12,9 +12,12 @@ function smtpPort(): number {
     return Number.isInteger(port) && port > 0 && port < 65536 ? port : 25;
 }
 
-/** MAIL_DISABLED=1 (test sites): never open an SMTP connection or send mail. */
-export function mailDisabled(): boolean {
-    return process.env.MAIL_DISABLED === "1";
+/**
+ * MAIL_DISABLED=1 (test sites): never open an SMTP connection or send mail.
+ * This overrides every other mail switch, including MISSED_PUNCH_MAIL_ENABLED.
+ */
+export function mailDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+    return env.MAIL_DISABLED === "1";
 }
 
 export class mailer{

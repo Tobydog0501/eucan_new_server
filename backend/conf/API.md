@@ -344,3 +344,64 @@ Soft-delete one punch (admins; punches of admin or built-in accounts: root only)
 - **404 Not Found**: No such (live / deleted) punch.
 - **409 Conflict**: Duplicate legacy rows share this punch number.
 
+
+---
+
+### 15. Make-up Punch Requests (補登申請) — employee side
+
+**Endpoints:**
+![GET](https://img.shields.io/badge/GET-0052CC?style=flat-square&logo=appveyor&logoColor=white) `/api/makeup/mine`
+![POST](https://img.shields.io/badge/POST-FF4136?style=flat-square&logo=appveyor&logoColor=white) `/api/makeup/apply`
+
+**Description:**  
+`mine` returns the caller's own requests only (no parameter selects anybody else), plus the values the form fills in by itself (`applicant.name`, `applicant.department`, `today`). `apply` files a pending request; it never creates a punch.
+
+**`apply` body:**
+```json
+{
+  "account": "string",
+  "cookie": "string",
+  "date": "YYYY-MM-DD",   // Not later than today (Taipei).
+  "kind": "in" | "out" | "both",
+  "clockin": "HH:MM",     // Required for in / both, ignored for out.
+  "clockout": "HH:MM",    // Required for out / both, ignored for in. Later than clockin.
+  "reason": "string"      // Required, at most 200 characters.
+}
+```
+
+**Response:**
+- `mine` **200 OK**: `{ "applicant": { "name", "department" }, "today", "requests": [{ "requestId", "name", "department", "date", "kind", "kindLabel", "clockin", "clockout", "reason", "appliedAt", "state", "stateLabel", "reviewerName", "reviewedAt", "reviewNote" }] }`
+- `apply` **201 Created**: `{ "status": "pending", "request": {...} }`
+- **400 Bad Request**: `{ "message" }` saying which field is wrong.
+- **403 Forbidden**: Not logged in.
+- **409 Conflict**: A pending or approved request already covers the same half of that day.
+
+---
+
+### 16. Review Make-up Punch Requests — admin side
+
+**Endpoints:**
+![GET](https://img.shields.io/badge/GET-0052CC?style=flat-square&logo=appveyor&logoColor=white) `/api/makeup/requests?state=pending|approved|rejected|all`
+![GET](https://img.shields.io/badge/GET-0052CC?style=flat-square&logo=appveyor&logoColor=white) `/api/makeup/audit?requestId=N`
+![POST](https://img.shields.io/badge/POST-FF4136?style=flat-square&logo=appveyor&logoColor=white) `/api/makeup/review`
+
+**Description:**  
+Admins only. Who may decide follows the punch-deletion rule (`canReviewMakeup` in `account_rules.ts`): requests of admin or built-in accounts only by root, and nobody decides their own. The list carries `account` and `canReview` per row. Approving inserts one punch into `clockinrecord` with `makeup_request_id` set (shown as `makeup: true` in the clock-in views and punch list) and refreshes an already generated month sheet; rejecting inserts nothing. Every submit / approve / reject is written to `makeup_audit`.
+
+**`review` body:**
+```json
+{
+  "account": "string",
+  "cookie": "string",
+  "requestId": 1,
+  "decision": "approve" | "reject",
+  "note": "string"       // Required to reject, optional to approve; at most 200 characters.
+}
+```
+
+**Response:**
+- **200 OK**: `{ "status": "approved" | "rejected", "request": {...}, "masterRefreshed": boolean }`
+- **400 Bad Request**: Invalid input data or missing rejection reason.
+- **403 Forbidden**: No permission.
+- **404 Not Found**: No such request.
+- **409 Conflict**: Already approved or rejected.

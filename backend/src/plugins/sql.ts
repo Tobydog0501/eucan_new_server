@@ -7,6 +7,7 @@ import { ClockEdit, ClockSheetRow, normalizeTime } from "./clockin_sheet";
 import { join } from "path";
 import { DAYOFF_COLUMNS, dayoffColumnFor, leaveColumn } from "./leave_types";
 import { runMigrations } from "./migrations";
+import { kindsOverlap, MakeupInput, MakeupKind } from "./makeup";
 // const logger = require("./logger.js");
 const log: logger = new logger(`./logs/${new Date().toISOString().split('T')[0]}.log`);
 
@@ -578,7 +579,9 @@ export class sql {
     }
     const column = type == 1 ? "clockin" : "clockout";
     const name: string = (this.login_db.prepare(`SELECT name FROM userinfo WHERE id= ?;`).get(user) as userinfo)["name"];
-    const open = data.find((row) => !row[column]);
+    // A make-up (補登) punch is a finished record approved by an admin; a live
+    // punch never fills its empty half.
+    const open = data.find((row) => !row[column] && row.makeup_request_id == null);
     if (open) {
       this.login_db.prepare(`UPDATE clockinrecord SET ${column}= ? WHERE id= ? AND num= ? AND date= ? AND deleted_at IS NULL;`).run(time, user, open.num, day);
       return { "status": 200 };
@@ -921,7 +924,7 @@ export class sql {
    */
   clockinPunches(id: string, date: string, includeDeleted: boolean): PunchRow[] {
     const rows = this.login_db.prepare(
-      `SELECT id, name, date, num, clockin, clockout, deleted_at, deleted_by, delete_reason
+      `SELECT id, name, date, num, clockin, clockout, deleted_at, deleted_by, delete_reason, makeup_request_id
        FROM clockinrecord WHERE id = ? AND date = ?${includeDeleted ? "" : " AND deleted_at IS NULL"} ORDER BY num;`
     ).all(id, date) as clockinrecord[];
     return rows.map((row) => ({
@@ -935,6 +938,8 @@ export class sql {
       deletedAt: row.deleted_at ?? null,
       deletedBy: row.deleted_by ?? null,
       deleteReason: row.delete_reason ?? null,
+      makeup: row.makeup_request_id != null,
+      makeupRequestId: row.makeup_request_id ?? null,
     }));
   }
 
@@ -1005,6 +1010,133 @@ export class sql {
     ).run(action, target.id, target.date, target.num, punch.clockin, punch.clockout, actor.id, actor.name, reason);
   }
 
+  /** Approved leave tickets that touch `date` (YYYY-MM-DD). */
+  approvedLeavesOnDate(date: string): Array<{ id: string, start: string, end: string }> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return [];
+    }
+    return this.login_db.prepare(
+      `SELECT id, start, end FROM requestquery
+       WHERE state = 1 AND date(start) <= ? AND date(end) >= ?;`
+    ).all(date, date) as Array<{ id: string, start: string, end: string }>;
+  }
+
+  // ---- Make-up punch (補登) requests ------------------------------------
+
+  /**
+   * File a make-up request and write its 'submit' audit row, in one
+   * transaction. Returns 'duplicate' when a pending or approved request of the
+   * same person already covers the same half of that day.
+   */
+  createMakeupRequest(applicant: { id: string, name: string, department: string }, input: MakeupInput): number | "duplicate" {
+    return this.login_db.transaction((): number | "duplicate" => {
+      const existing = this.login_db.prepare(
+        `SELECT kind FROM makeup_request WHERE id = ? AND missed_date = ? AND state IN ('pending', 'approved');`
+      ).all(applicant.id, input.date) as Array<{ kind: MakeupKind }>;
+      if (existing.some((row) => kindsOverlap(row.kind, input.kind))) return "duplicate";
+      const result = this.login_db.prepare(
+        `INSERT INTO makeup_request (id, name, department, missed_date, kind, clockin, clockout, reason, applied_at, state)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'), 'pending');`
+      ).run(applicant.id, applicant.name, applicant.department, input.date, input.kind, input.clockin, input.clockout, input.reason);
+      const requestId = Number(result.lastInsertRowid);
+      this.writeMakeupAudit(requestId, "submit", { id: applicant.id, name: applicant.name }, input.reason);
+      return requestId;
+    })();
+  }
+
+  getMakeupRequest(requestId: number): MakeupRequestRow | null {
+    const row = this.login_db.prepare(`SELECT * FROM makeup_request WHERE request_id = ?;`).get(requestId) as MakeupRequestRow | undefined;
+    return row ? row : null;
+  }
+
+  /** One person's own requests, newest first. */
+  makeupRequestsOf(id: string): MakeupRequestRow[] {
+    return this.login_db.prepare(`SELECT * FROM makeup_request WHERE id = ? ORDER BY request_id DESC;`).all(id) as MakeupRequestRow[];
+  }
+
+  /** Every request, optionally in one state; pending ones oldest first, others newest first. */
+  makeupRequests(state?: MakeupState): MakeupRequestRow[] {
+    if (state) {
+      const order = state === "pending" ? "ASC" : "DESC";
+      return this.login_db.prepare(`SELECT * FROM makeup_request WHERE state = ? ORDER BY request_id ${order};`).all(state) as MakeupRequestRow[];
+    }
+    return this.login_db.prepare(`SELECT * FROM makeup_request ORDER BY request_id DESC;`).all() as MakeupRequestRow[];
+  }
+
+  /** Ids of people with a pending make-up request for `date`. */
+  pendingMakeupIdsOn(date: string): string[] {
+    const rows = this.login_db.prepare(`SELECT DISTINCT id FROM makeup_request WHERE missed_date = ? AND state = 'pending';`).all(date) as Array<{ id: string }>;
+    return rows.map((row) => row.id);
+  }
+
+  /**
+   * Approve or reject a pending request, in one transaction. Approval inserts
+   * the punch (flagged with makeup_request_id) under a fresh number for that
+   * day; rejection inserts nothing. Both write an audit row.
+   */
+  reviewMakeupRequest(requestId: number, decision: "approve" | "reject", actor: { id: string, name: string }, note: string): MakeupReview {
+    return this.login_db.transaction((): MakeupReview => {
+      const request = this.getMakeupRequest(requestId);
+      if (!request) return { result: "missing" };
+      if (request.state !== "pending") return { result: "not-pending", state: request.state };
+      let punchNum: number | null = null;
+      if (decision === "approve") {
+        // Count soft-deleted rows too, so a later restore cannot clash.
+        const max = this.login_db.prepare(`SELECT MAX(num) AS n FROM clockinrecord WHERE id = ? AND date = ?;`).get(request.id, request.missed_date) as { n: number | null };
+        punchNum = (Number(max.n) || 0) + 1;
+        this.login_db.prepare(
+          `INSERT INTO clockinrecord (id, name, date, num, clockin, clockout, makeup_request_id) VALUES (?, ?, ?, ?, ?, ?, ?);`
+        ).run(request.id, request.name, request.missed_date, punchNum, request.clockin, request.clockout, request.request_id);
+      }
+      this.login_db.prepare(
+        `UPDATE makeup_request SET state = ?, reviewer_id = ?, reviewer_name = ?, review_note = ?, punch_num = ?,
+           reviewed_at = strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours')
+         WHERE request_id = ? AND state = 'pending';`
+      ).run(decision === "approve" ? "approved" : "rejected", actor.id, actor.name, note, punchNum, requestId);
+      this.writeMakeupAudit(requestId, decision, actor, note);
+      return { result: "done", request: this.getMakeupRequest(requestId) as MakeupRequestRow };
+    })();
+  }
+
+  /** Audit trail of make-up requests, oldest first. */
+  makeupAudit(requestId?: number): MakeupAuditRow[] {
+    if (requestId != null) {
+      return this.login_db.prepare(`SELECT * FROM makeup_audit WHERE request_id = ? ORDER BY audit_id;`).all(requestId) as MakeupAuditRow[];
+    }
+    return this.login_db.prepare(`SELECT * FROM makeup_audit ORDER BY audit_id;`).all() as MakeupAuditRow[];
+  }
+
+  private writeMakeupAudit(requestId: number, action: "submit" | "approve" | "reject", actor: { id: string, name: string }, reason: string): void {
+    this.login_db.prepare(
+      `INSERT INTO makeup_audit (request_id, action, actor_id, actor_name, reason, acted_at)
+       VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'));`
+    ).run(requestId, action, actor.id, actor.name, reason);
+  }
+
+  // ---- Missed-punch notice de-duplication -------------------------------
+
+  /**
+   * Claim the notice for (id, date). True when this caller should send it:
+   * no notice exists yet, or the earlier attempt failed. A notice that was
+   * sent (or is being sent) is never claimed again.
+   */
+  claimMissedPunchNotice(id: string, date: string, kind: string, channel: string): boolean {
+    const result = this.login_db.prepare(
+      `INSERT INTO missed_punch_notice (id, date, kind, channel, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'pending', strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'), strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'))
+       ON CONFLICT(id, date) DO UPDATE SET
+         status = 'pending', kind = excluded.kind, channel = excluded.channel, updated_at = excluded.updated_at
+       WHERE missed_punch_notice.status = 'failed';`
+    ).run(id, date, kind, channel);
+    return result.changes > 0;
+  }
+
+  finishMissedPunchNotice(id: string, date: string, status: "sent" | "failed"): void {
+    this.login_db.prepare(
+      `UPDATE missed_punch_notice SET status = ?, updated_at = strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours') WHERE id = ? AND date = ?;`
+    ).run(status, id, date);
+  }
+
   private clockMonthParts(year: string | number, month: string | number): { year: string; month: string } {
     return {
       year: String(year),
@@ -1058,7 +1190,45 @@ export type PunchRow = {
   deletedAt: string | null;
   deletedBy: string | null;
   deleteReason: string | null;
+  makeup: boolean;
+  makeupRequestId: number | null;
 };
+
+export type MakeupState = "pending" | "approved" | "rejected";
+
+export type MakeupRequestRow = {
+  request_id: number;
+  id: string;
+  name: string;
+  department: string;
+  missed_date: string;
+  kind: MakeupKind;
+  clockin: string | null;
+  clockout: string | null;
+  reason: string;
+  applied_at: string;
+  state: MakeupState;
+  reviewer_id: string | null;
+  reviewer_name: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  punch_num: number | null;
+};
+
+export type MakeupAuditRow = {
+  audit_id: number;
+  request_id: number;
+  action: "submit" | "approve" | "reject";
+  actor_id: string;
+  actor_name: string;
+  reason: string;
+  acted_at: string;
+};
+
+export type MakeupReview =
+  | { result: "done", request: MakeupRequestRow }
+  | { result: "missing" }
+  | { result: "not-pending", state: MakeupState };
 
 export type PunchAuditRow = {
   audit_id: number;
