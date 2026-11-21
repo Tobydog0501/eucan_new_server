@@ -196,7 +196,7 @@ test('missed-punch notice: sending off -> only outbox files, no SMTP connection;
 });
 
 test('missed-punch notice: sending on -> mails through SMTP once; a failed send is retried on the next run', async () => {
-  const saved = { SMTP_SERVER: process.env.SMTP_SERVER, SMTP_PORT: process.env.SMTP_PORT };
+  const saved = { SMTP_SERVER: process.env.SMTP_SERVER, SMTP_PORT: process.env.SMTP_PORT, USER_MAIL: process.env.USER_MAIL, USER_PWD: process.env.USER_PWD };
   const smtpDown = await startFakeSmtp('reject');
   const smtpUp = await startFakeSmtp('accept');
   try {
@@ -208,6 +208,9 @@ test('missed-punch notice: sending on -> mails through SMTP once; a failed send 
       const mailerFor = (smtp) => {
         process.env.SMTP_SERVER = '127.0.0.1';
         process.env.SMTP_PORT = String(smtp.port);
+        // Fake credentials for the fake server (same as the harness uses).
+        process.env.USER_MAIL = 'system@example.invalid';
+        process.env.USER_PWD = 'fixture-smtp';
         const m = new mailer();
         return (to, s, b) => m.send(to, s, b);
       };
@@ -224,7 +227,7 @@ test('missed-punch notice: sending on -> mails through SMTP once; a failed send 
 
       // Next run: retried and delivered, one mail each.
       const up = await job.runMissedPunchCheck(db, log, { date: TUESDAY, sender: mailerFor(smtpUp), config });
-      assert.deepEqual(up.notified.map((n) => [n.id, n.channel]).sort(), [['emp1', 'smtp'], ['emp3', 'smtp'], ['emp9', 'smtp']]);
+      assert.deepEqual(up.notified.map((n) => [n.id, n.channel]).sort(), [['emp1', 'smtp'], ['emp3', 'smtp'], ['emp9', 'smtp']], log.lines.join(' | '));
       await smtpUp.waitForMessages(3);
       for (const id of ['emp1', 'emp3', 'emp9']) {
         assert.equal(smtpUp.messages.filter((m) => m.includes(`To: ${id}@example.invalid`)).length, 1, id);
