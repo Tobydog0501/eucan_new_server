@@ -1,6 +1,6 @@
 // 補登申請（員工端）：填寫未打卡補登申請，並查看自己申請的審核狀態。
 $(function () {
-    const API = "https://eucan.ddns.net:3000";
+    const API = EUCAN_API_BASE;
     const sessionKey = readCookie("session");
     const userId = readCookie("id");
 

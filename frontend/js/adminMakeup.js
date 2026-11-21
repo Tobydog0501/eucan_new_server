@@ -1,7 +1,7 @@
 // 補登審核（後台）：主管／管理員核准或駁回員工的補登申請。
 // 核准後才會產生標記為「補登」的打卡紀錄；駁回需填原因。
 $(function () {
-    const API = "https://eucan.ddns.net:3000";
+    const API = EUCAN_API_BASE;
     const sessionKey = readCookie("session");
     const userId = readCookie("id");
 
