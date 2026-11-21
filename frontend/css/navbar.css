@@ -27,10 +27,12 @@
 }
 
 .eu-navbar > .container-fluid {
-	max-width: var(--eu-page-max, 1200px);
+	/* Same content width and side gutter as .eu-page, so the logo lines up
+	   with the page title */
+	max-width: calc(var(--eu-page-max, 1200px) + 2 * var(--eu-gutter, 1rem));
 	min-height: 60px;
-	padding-left: 1rem;
-	padding-right: 1rem;
+	padding-left: var(--eu-gutter, 1rem);
+	padding-right: var(--eu-gutter, 1rem);
 }
 
 .eu-navbar .navbar-brand {
@@ -159,7 +161,7 @@
 
 	.eu-navbar .navbar-collapse {
 		border-top: 1px solid var(--eu-border, #e5e7eb);
-		margin: 0 -1rem;
+		margin: 0 calc(-1 * var(--eu-gutter, 1rem));
 		padding: 0.25rem 0 0;
 	}
 

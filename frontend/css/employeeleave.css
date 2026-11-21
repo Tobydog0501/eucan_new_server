@@ -53,6 +53,22 @@
     width: 100%;
 }
 
+/* Desktop: 特休統計 and the request form side by side instead of one
+   left-aligned column with empty space on the right */
+@media (min-width: 992px) {
+    .leave-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+        gap: var(--eu-space-5);
+        align-items: start;
+        max-width: none;
+    }
+
+    .leave-layout > .eu-card {
+        margin-bottom: 0;
+    }
+}
+
 @media (max-width: 575.98px) {
     .leave-datetime,
     .leave-stats {
