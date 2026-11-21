@@ -534,7 +534,7 @@ export class sql {
       }
     }
     this.login_db.prepare(`UPDATE requestquery SET state= ? WHERE serialnum= ?;`).run(state, num);
-    log.logFormat(`Dayoff ticket #${num} has been set to ${state ? "accepted" : "denied"}.`);
+    log.logFormat(`Dayoff ticket #${num} has been set to ${state == 1 ? "accepted" : "denied"}.`);
     return (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ? `).get(query["id"]) as userinfo)["email"];
   }
 
@@ -636,7 +636,9 @@ export class sql {
 
   checkRemainAnnual(user: string, year: digit, adds: number, first_half: boolean): boolean {
     const quotaData = this.calculateAnnualQuota(user, year);
-    const used = (this.login_db.prepare(`SELECT annual FROM dayoffinfo WHERE id= ? AND year= ?`).get(user, year) as dayoffinfo)["annual"] as number;
+    // A year with no usage row yet has used nothing (same rule as newRequest).
+    const usedRow = this.login_db.prepare(`SELECT annual FROM dayoffinfo WHERE id= ? AND year= ?`).get(user, year) as dayoffinfo | undefined;
+    const used = usedRow ? (usedRow["annual"] as number) : 0;
     if (quotaData.separate) {
       const q = first_half ? 0 : 24
       if (used + adds <= q) {
@@ -709,31 +711,52 @@ export class sql {
     });
   }
 
+  /**
+   * Edit (action 1) or delete (action 0) a ticket, then recompute the usage of
+   * every leave year the ticket touched before and after the change. Runs in
+   * one transaction so the ticket and the usage rows never disagree.
+   * Returns null when an annual-leave edit would exceed the quota.
+   */
   modifyTicket(num: string, action: number, type: string, start: string, end: string, totalTime: number, state: digit, reason: string): number | null {
     const ticket = (this.login_db.prepare(`SELECT * FROM requestquery WHERE serialnum= ?;`).get(num) as requestquery);
     const user = ticket["id"];
-    const query = (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ?;`).get(user) as userinfo);
-    // const userinfo = this.login_db.prepare(`SELECT * FROM userinfo WHERE id='${query["id"]}'`).all()[0];
-    const checkpoint = new Date(`${end.split("-")[0]}-${query["joinTime"].substring(5)}`);
-    const endDate = new Date(end.split(" ")[0]);
-    const year = checkpoint > endDate ? (parseInt(end.split("-")[0]) - 1).toString() : end.split("-")[0];
-    if (action == 0) {
-      // Delete
-      this.login_db.prepare(`DELETE FROM requestquery WHERE serialnum= ?;`).run(num);
-      log.logFormat(`Ticket #${num} has been DELETED.`);
-      this.syncTickets(user, ticket["year"]);
+    const oldYear = `${ticket["year"]}`;
+    // Approved 特休假_N tickets count towards the following year (see syncTickets).
+    const affectedYears = (year: string, ticketType: string): string[] =>
+      leaveColumn(ticketType) === "annual_special" ? [year, `${parseInt(year) + 1}`] : [year];
+
+    const run = this.login_db.transaction((): number | null => {
+      if (action == 0) {
+        this.login_db.prepare(`DELETE FROM requestquery WHERE serialnum= ?;`).run(num);
+        log.logFormat(`Ticket #${num} has been DELETED.`);
+        for (const y of new Set(affectedYears(oldYear, ticket["type"]))) this.syncTickets(user, y);
+        return 0;
+      }
+
+      const query = (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ?;`).get(user) as userinfo);
+      const checkpoint = new Date(`${end.split("-")[0]}-${query["joinTime"].substring(5)}`);
+      const endDate = new Date(end.split(" ")[0]);
+      const year = checkpoint > endDate ? (parseInt(end.split("-")[0]) - 1).toString() : end.split("-")[0];
+
+      if (type === "特休假") {
+        // dayoffinfo.annual only holds approved tickets; the old copy of this
+        // ticket is already counted there only if it was approved annual leave
+        // in the same leave year.
+        const counted = ticket["type"] === "特休假" && `${ticket["state"]}` === "1" && oldYear === year ? ticket["totalTime"] : 0;
+        const { m } = calculate(new Date(query["joinTime"]), new Date());
+        if (this.checkRemainAnnual(user, parseInt(year), totalTime - counted, m < 6) == false) {
+          log.logFormat(`${user} try to request a dayoff but exceed annual quota.`);
+          return null;
+        }
+      }
+      const new_reason: string = reason.replace("<", "").replace(">", "").replace('"', '');
+      this.login_db.prepare(`UPDATE requestquery SET type= ?, start= ?, end= ?, totalTime= ?, state= ?, year= ?, reason= ?, month= ? WHERE serialnum= ?;`)
+        .run(type, start, end, totalTime, state, year, new_reason, parseInt(start.split("-")[1]), num);
+      const years = new Set([...affectedYears(oldYear, ticket["type"]), ...affectedYears(year, type)]);
+      for (const y of years) this.syncTickets(user, y);
       return 0;
-    }
-    const { m, d } = calculate(new Date(start), new Date(end));
-    if (this.checkRemainAnnual(user, parseInt(year), parseInt(`${totalTime}`) - ticket.totalTime, m < 6) == false) {
-      log.logFormat(`${user} try to request a dayoff but exceed annual quota.`);
-      return null;
-    }
-    const new_reason: string = reason.replace("<", "").replace(">", "").replace('"', '');
-    this.login_db.prepare(`UPDATE requestquery SET type= ?, start= ?, end= ?, totalTime= ?, state= ?, year= ?, reason= ? WHERE serialnum= ?;`).run(type, start, end, totalTime, state, year, new_reason, num);
-    // log.logFormat(`Ticket #${num} from ${user} has been MODIFIED: type='${type}', start='${start}', end='${end}', totalTime=${totalTime}, state=${state}, year='${year}'`);
-    this.syncTickets(user, ticket["year"]);
-    return 0;
+    });
+    return run();
   }
 
   modifyEmployeeInfo(user: string, pwd: string, type: string, email: string, name: string, joinTime: string, mgroup: digit, permit: digit, status: digit, leaveDate: string | null): void {
