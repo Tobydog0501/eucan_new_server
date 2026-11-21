@@ -56,7 +56,8 @@ $(function () {
 
     function renderEmployee(employee) {
         $("#id").val(employee.id);
-        $("#pwd").val(employee.pwd || "");
+        // The server never sends the stored password; leave the field empty to keep it.
+        $("#pwd").val("");
         $("#employeeName").val(employee.name || "");
         $("#email").val(employee.email || "");
         $("#joinTime").val((employee.joinTime || "").split(" ")[0]);
