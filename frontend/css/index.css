@@ -7,16 +7,28 @@
 body, html {
     margin: 0;
     padding: 0;
-    height: 100%;
 }
 
-/* 全螢幕背景 */
+html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+body {
+    min-height: 100vh;
+    min-height: 100dvh;
+}
+
+/* 全螢幕背景：留在一般排版流中（不用 position: fixed），
+   內容比畫面高或 iOS 鍵盤彈出時頁面才能捲動 */
 .fullscreen {
     margin: 0;
     background: url("../img/login.jpg") center/cover no-repeat;
-    position: fixed;
+    position: relative;
+    display: flow-root; /* 防止 .field 的 margin 穿出造成頂端白邊 */
     opacity: 0.85;
-    height: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
     width: 100%;
 }
 
@@ -54,7 +66,7 @@ input {
     margin-bottom: 20px;
     width: 200px;
     height: 30px;
-    font-size: 15px;
+    font-size: 16px; /* 低於 16px 時 iOS Safari 聚焦會自動放大 */
     border: 3px solid orange;
     border-radius: 5px;
     padding: 5px;
@@ -168,6 +180,62 @@ p {
     border-radius: 5px;
     font-size: 12px;
     text-align: right;
+}
+
+/* 窄螢幕（手機直向）與矮螢幕（手機橫向） */
+@media (max-width: 600px), (max-height: 500px) {
+    body {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .fullscreen {
+        flex: 1 0 auto;
+        min-height: 0;
+        padding: 0 16px;
+    }
+
+    .field {
+        margin: 48px 0 32px;
+    }
+
+    h1 {
+        font-size: 36px;
+        margin: 0 0 28px;
+    }
+
+    .login-stack {
+        width: 100%;
+        max-width: 280px;
+    }
+
+    input {
+        height: 44px;
+    }
+
+    /* 版本列改為頁尾，排在表單下方，不再固定蓋住輸入框 */
+    .version-info {
+        position: static;
+        flex: 0 0 auto;
+        border-radius: 0;
+        text-align: center;
+        padding: 6px 16px calc(6px + env(safe-area-inset-bottom));
+    }
+}
+
+@media (max-height: 500px) {
+    .field {
+        margin: 16px 0;
+    }
+
+    h1 {
+        font-size: 26px;
+        margin-bottom: 12px;
+    }
+
+    .inputs {
+        margin: 10px 0;
+    }
 }
 
 /* 炫光動畫 */
