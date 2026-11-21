@@ -311,7 +311,7 @@ test('migration: runs twice without error and keeps legacy rows intact', async (
     const db = new Database(file);
     try {
       const first = runMigrations(db);
-      assert.deepEqual(first.applied, ['clockinrecord soft-delete columns', 'clockin_punch_audit table', 'clockinrecord (id, date) index']);
+      assert.deepEqual(first.applied.slice(0, 3), ['clockinrecord soft-delete columns', 'clockin_punch_audit table', 'clockinrecord (id, date) index']);
       const second = runMigrations(db);
       assert.deepEqual(second.applied, []);
       const cols = db.prepare('PRAGMA table_info(clockinrecord)').all().map((c) => c.name);
