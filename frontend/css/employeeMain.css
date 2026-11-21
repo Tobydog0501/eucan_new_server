@@ -1,13 +1,29 @@
-nav{
-	font-size: 20px;
+/* 員工首頁（公告事項）：兩張公告圖並排，手機改為單欄 */
+.eu-notice-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: var(--eu-space-4);
+    align-items: start;
 }
 
-
-header img{
-	width: 130px;
+.eu-notice {
+    padding: var(--eu-space-3);
 }
 
+.eu-notice img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: var(--eu-radius-sm);
+}
 
-section img{
-	width: 100vh;
+.eu-report-link {
+    font-size: var(--eu-fs-sm);
+    color: var(--eu-muted);
+}
+
+@media (max-width: 575.98px) {
+    .eu-notice-grid {
+        grid-template-columns: 1fr;
+    }
 }
