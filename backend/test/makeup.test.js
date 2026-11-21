@@ -11,6 +11,7 @@ const assert = require('node:assert');
 const path = require('node:path');
 const Database = require('better-sqlite3');
 const { startServer, inWorkdir, session } = require('../testlib/harness');
+const { recentWorkdays, daysBefore } = require('../testlib/workdays');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** The Taipei calendar date `back` days ago (YYYY-MM-DD); the backend runs on Taipei time. */
@@ -19,23 +20,11 @@ const weekdayOf = (date) => new Date(`${date}T00:00:00Z`).getUTCDay();
 const isWeekend = (date) => [0, 6].includes(weekdayOf(date));
 const TODAY = taipeiDate(0);
 
-/**
- * Recent working days (the harness calendar: weekends off) inside the page's
- * look-back window, newest first, all in one month, avoiding the harness's
- * leave tickets on 03-02 / 03-03.
- */
-function recentWorkdays(count) {
-  const out = [];
-  for (let back = 1; back <= 28 && out.length < count; back++) {
-    const date = taipeiDate(back);
-    if (isWeekend(date) || /-03-0[23]$/.test(date)) continue;
-    if (out.length && date.slice(0, 7) !== out[0].slice(0, 7)) continue;
-    out.push(date);
-  }
-  if (out.length < count) throw new Error('not enough recent workdays');
-  return out;
-}
-const [DATE, OTHER_DATE, THIRD_DATE] = recentWorkdays(3);
+// Recent working days (the harness calendar: weekends off) inside the page's
+// look-back window, newest first, all in one month, avoiding the harness's
+// leave tickets on 03-02 / 03-03. See test/workdays.test.js for month and
+// year boundaries.
+const [DATE, OTHER_DATE, THIRD_DATE] = recentWorkdays(TODAY, 3, { skip: (date) => /-03-0[23]$/.test(date) });
 const YEAR = Number(DATE.slice(0, 4));
 const MONTH = Number(DATE.slice(5, 7));
 const RECENT_WEEKEND = [1, 2, 3, 4, 5, 6, 7].map(taipeiDate).find(isWeekend);
@@ -397,4 +386,62 @@ test('migration: make-up and notice steps run twice without error and keep old r
     }
     assert.deepEqual(snapshot(), before);
   });
+});
+
+test('makeup across a year boundary: early in January the cards reach back into December and can be filed and approved', async () => {
+  // Dates relative to the current year, so the harness calendars (this year
+  // and the next) cover them. Working days: weekends off.
+  const nextWorkday = (date) => { let d = daysBefore(date, -1); while (isWeekend(d)) d = daysBefore(d, -1); return d; };
+  const prevWorkday = (date) => { let d = daysBefore(date, 1); while (isWeekend(d)) d = daysBefore(d, 1); return d; };
+  const year = Number(TODAY.slice(0, 4));
+  const firstJan = nextWorkday(`${year}-12-31`); // first working day of next year
+  const today = nextWorkday(firstJan); // the server's (fake) today
+  const lastDec = prevWorkday(`${year + 1}-01-01`);
+  const prevDec = prevWorkday(lastDec);
+  const earlierDec = prevWorkday(prevDec);
+  const windowStart = daysBefore(today, 31);
+  const beforeWindow = prevWorkday(windowStart);
+
+  const FAKECLOCK = path.join(__dirname, '..', 'testlib', 'fakeclock.js');
+  const server = await startServer({
+    env: {
+      CLOCKIN_PDF_FONT: FONT, MISSED_PUNCH_CHECK: '0', CALENDAR_DOWNLOAD_DISABLED: '1',
+      FAKE_NOW: `${today}T10:00:00+08:00`, NODE_OPTIONS: `--require=${JSON.stringify(FAKECLOCK)}`,
+    },
+  });
+  try {
+    // The fixture sessions are stamped with the real time, and every check re-stamps
+    // them with it (SQLite now), so make them fresh at the fake time before each call.
+    const fresh = (call) => {
+      write(server, 'UPDATE logininfo SET createTime = ?', `${today} 09:55:00`);
+      return call();
+    };
+    // Fully punched on the first January workday and prevDec; clock-in only on lastDec.
+    for (const date of [firstJan, prevDec]) punch(server, 'emp1', date, '08:20', '17:40');
+    punch(server, 'emp1', lastDec, '08:20', null);
+    const res = await fresh(() => mine(server, 'emp1'));
+    assert.equal(res.status, 200, res.text);
+    assert.equal(res.json.today, today);
+    const dates = res.json.missing.map((c) => c.date);
+    assert.deepEqual(cardsOn(res, firstJan), []);
+    assert.deepEqual(cardsOn(res, lastDec), ['out']);
+    assert.deepEqual(cardsOn(res, prevDec), []);
+    assert.deepEqual(cardsOn(res, earlierDec), ['in', 'out']);
+    assert.ok(dates.every((d) => d < today && d >= windowStart && !isWeekend(d)), dates.join());
+    assert.ok(!dates.includes(beforeWindow), dates.join());
+    assert.deepEqual([...dates].sort().reverse(), dates, 'newest first across the year change');
+
+    const filed = await fresh(() => apply(server, 'emp1', { date: lastDec, kind: 'out', reason: '忘記打卡' }));
+    assert.equal(filed.status, 201, filed.text);
+    const outside = await fresh(() => apply(server, 'emp1', { date: beforeWindow, kind: 'in', reason: '忘記打卡' }));
+    assert.equal(outside.status, 409, 'outside the window');
+    const approved = await fresh(() => review(server, 'admin1', filed.json.request.requestId, 'approve'));
+    assert.equal(approved.status, 200, approved.text);
+    assert.deepEqual(cardsOn(await fresh(() => mine(server, 'emp1')), lastDec), []);
+    const made = punches(server).filter((p) => p.date === lastDec);
+    assert.ok(made.some((p) => p.clockout === '17:30'), JSON.stringify(made));
+    assert.equal(await server.alive(), true, server.output());
+  } finally {
+    await server.stop();
+  }
 });

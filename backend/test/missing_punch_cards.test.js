@@ -38,6 +38,12 @@ function seed(file) {
       for (const id of ['emp1', 'emp5']) punch.run(id, id, date, 1, '08:20', '17:40');
     }
     punch.run('emp5', 'emp5', '2026-03-12', 1, null, null);
+    // emp6, for the month and year boundaries (2026-11/12, 2026-12/2027-01):
+    // 11-30 clock-out only; 12-30 and 2027-01-04 full; 12-31 clock-in only.
+    addUser.run('emp6', 'fixture', 'employee', 'emp6@example.invalid', 'Fixture emp6', '2020-01-01', 0, 1, 1);
+    punch.run('emp6', 'emp6', '2026-11-30', 1, null, '17:40');
+    for (const date of ['2026-12-30', '2027-01-04']) punch.run('emp6', 'emp6', date, 1, '08:20', '17:40');
+    punch.run('emp6', 'emp6', '2026-12-31', 1, '08:20', null);
     const ticket = db.prepare('INSERT INTO requestquery (serialnum,id,name,type,start,end,mgroup,state,year,month,totalTime,reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
     ticket.run('t1', 'emp5', 'emp5', '事假', '2026-03-13 08:30', '2026-03-13 17:30', 0, 0, '2026', '3', 8, 'fixture');
     ticket.run('t2', 'emp5', 'emp5', '事假', '2026-03-12 08:30', '2026-03-12 12:30', 0, 1, '2026', '3', 4, 'fixture');
@@ -131,5 +137,40 @@ test('card validation: only date, in/out and a reason; times come from the shift
     const slot = { start: job.WORK_START, end: job.WORK_END };
     assert.deepEqual(makeup.makeupFromCard({ date: '2026-03-13', kind: 'in', reason: 'r' }, slot), { date: '2026-03-13', kind: 'in', clockin: '08:30', clockout: null, reason: 'r' });
     assert.deepEqual(makeup.makeupFromCard({ date: '2026-03-13', kind: 'out', reason: 'r' }, slot), { date: '2026-03-13', kind: 'out', clockin: null, clockout: '17:30', reason: 'r' });
+  });
+});
+
+test('missing-punch cards across a month boundary (window 2026-11-29 .. 2026-12-01)', async () => {
+  await withCards(async ({ cards }) => {
+    assert.deepEqual(flat(await cards('emp6', { today: '2026-12-02', lookbackDays: 3 })), ['2026-12-01 in', '2026-12-01 out', '2026-11-30 in']);
+  });
+});
+
+test('missing-punch cards across a year boundary: same as the mail, punches loaded once per month', async () => {
+  await withCards(async ({ db, job, cards }) => {
+    const calls = [];
+    const real = db.clockinRecord.bind(db);
+    db.clockinRecord = (year, month) => { calls.push(`${year}-${month}`); return real(year, month); };
+    // Window 2027-01-04 .. 2026-12-29; 01-02 / 01-03 are a weekend.
+    const got = await cards('emp6', { today: '2027-01-05', lookbackDays: 7 });
+    assert.deepEqual(flat(got), ['2027-01-01 in', '2027-01-01 out', '2026-12-31 out', '2026-12-29 in', '2026-12-29 out']);
+    assert.deepEqual(calls, ['2027-01', '2026-12']);
+    for (const date of ['2027-01-04', '2027-01-01', '2026-12-31', '2026-12-30', '2026-12-29']) {
+      const kinds = got.filter((c) => c.date === date).map((c) => c.kind);
+      const mailed = (await job.findMissedPunches(db, date)).find((m) => m.id === 'emp6');
+      assert.equal(mailed && mailed.kind, kinds.length === 2 ? 'both' : kinds[0], date);
+    }
+  });
+});
+
+test('card validation: the reason may hold line breaks and tabs but no other control characters', async () => {
+  await withCards(async ({ makeup }) => {
+    const card = { date: '2026-03-13', kind: 'in' };
+    assert.equal(makeup.validateMakeupCard({ ...card, reason: '忘記\n打卡\t了\r\n說明' }, TODAY).ok, true);
+    for (const bad of ['\u0000', '\u0007', '\u001b[31m', '\u000b', '\u000c', '\u007f']) {
+      const res = makeup.validateMakeupCard({ ...card, reason: `忘記${bad}打卡` }, TODAY);
+      assert.equal(res.ok, false, JSON.stringify(bad));
+      assert.match(res.message, /控制字元/);
+    }
   });
 });

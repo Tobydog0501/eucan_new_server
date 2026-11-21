@@ -498,6 +498,11 @@ textarea.form-control {
 	margin-bottom: 0;
 }
 
+/* The empty-state and error messages span the whole row, not one card track. */
+.eu-punch-grid > p {
+	grid-column: 1 / -1;
+}
+
 .eu-punch-card {
 	display: flex;
 	flex-direction: column;

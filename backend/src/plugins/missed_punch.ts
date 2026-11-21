@@ -116,6 +116,9 @@ function expectedToPunch(user: Person, date: string): boolean {
 
 export type MissedHalves = { user: Person; missIn: boolean; missOut: boolean };
 
+/** Loads the punches of one month (year YYYY, month MM). */
+export type MonthPunches = (year: string, month: string) => ReturnType<sql['clockinRecord']>;
+
 /**
  * The detection shared by the notice mail and the 補打卡申請 page: for each
  * of `users` expected to punch on `date` (assumed to be a working day), which
@@ -123,13 +126,16 @@ export type MissedHalves = { user: Person; missIn: boolean; missOut: boolean };
  * tickets of that day that excuse (the mail passes approved ones only).
  * Soft-deleted punches do not count; approved make-up punches and admin
  * corrections do. Only people missing at least one half are returned.
+ * `monthPunches` loads a month's punches; callers checking many days pass a
+ * cached one (see missingPunchCards).
  */
 export async function missedHalvesOn(
-  sqlPlugin: sql, date: string, users: Person[], leaves: Array<{ id: string, start: string, end: string }>
+  sqlPlugin: sql, date: string, users: Person[], leaves: Array<{ id: string, start: string, end: string }>,
+  monthPunches: MonthPunches = (year, month) => sqlPlugin.clockinRecord(year, month)
 ): Promise<MissedHalves[]> {
   const candidates = users.filter((user) => expectedToPunch(user, date));
   if (!candidates.length) return [];
-  const punches = (await sqlPlugin.clockinRecord(date.slice(0, 4), date.slice(5, 7))).filter((p) => p.date === date);
+  const punches = (await monthPunches(date.slice(0, 4), date.slice(5, 7))).filter((p) => p.date === date);
   const edits = new Map<string, ClockEdit>();
   for (const edit of sqlPlugin.clockinEditsForDate(date)) edits.set(edit.id, edit);
   const workStart = `${date} ${WORK_START}`;
@@ -195,6 +201,14 @@ export async function missingPunchCards(
   const isWorking = options.isWorkingDay || isOfficeWorkingDay;
   const lookback = options.lookbackDays ?? MAKEUP_LOOKBACK_DAYS;
   const cards: MissingPunchCard[] = [];
+  // The window spans one or two months (three at most for longer windows):
+  // load each month's punches once, not once per day.
+  const loaded = new Map<string, ReturnType<MonthPunches>>();
+  const monthPunches: MonthPunches = (year, month) => {
+    const key = `${year}-${month}`;
+    if (!loaded.has(key)) loaded.set(key, sqlPlugin.clockinRecord(year, month));
+    return loaded.get(key) as ReturnType<MonthPunches>;
+  };
   for (let back = 1; back <= lookback; back++) {
     const date = daysBefore(options.today, back);
     if (!expectedToPunch(user, date)) continue;
@@ -206,7 +220,7 @@ export async function missingPunchCards(
     }
     if (!working) continue;
     const leaves = sqlPlugin.leavesOnDate(date, userId, [0, 1]);
-    const [found] = await missedHalvesOn(sqlPlugin, date, [user], leaves);
+    const [found] = await missedHalvesOn(sqlPlugin, date, [user], leaves, monthPunches);
     if (!found) continue;
     const filed = sqlPlugin.activeMakeupKindsOn(userId, date);
     if (found.missIn && !filed.some((kind) => kindsOverlap(kind, 'in'))) cards.push({ date, kind: 'in' });

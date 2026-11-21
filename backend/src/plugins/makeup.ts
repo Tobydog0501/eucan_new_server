@@ -68,6 +68,8 @@ export function validateMakeupCard(body: { [key: string]: unknown }, today: stri
   const reason = typeof body['reason'] === 'string' ? body['reason'].trim() : '';
   if (!reason) return { ok: false, message: '請填寫未打卡原因' };
   if (reason.length > MAKEUP_REASON_MAX) return { ok: false, message: `未打卡原因最多 ${MAKEUP_REASON_MAX} 字` };
+  // The reason is a textarea: line breaks and tabs are fine, other control characters are not.
+  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(reason)) return { ok: false, message: '未打卡原因不能包含控制字元' };
   return { ok: true, value: { date, kind, reason } };
 }
 
