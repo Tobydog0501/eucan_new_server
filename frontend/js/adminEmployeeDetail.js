@@ -29,7 +29,7 @@ $(function () {
 
     function loadEmployee() {
         $.ajax({
-            url: `https://eucan.ddns.net:3000/users`,
+            url: `${EUCAN_API_BASE}/users`,
             type: 'POST',
             dataType: 'json',
             headers: {
@@ -112,7 +112,7 @@ $(function () {
         };
 
         $.ajax({
-            url: `https://eucan.ddns.net:3000/modemp`,
+            url: `${EUCAN_API_BASE}/modemp`,
             type: 'POST',
             headers: {
                 'Content-Type': 'application/json',

@@ -40,6 +40,8 @@ services:
       dockerfile: Dockerfile
     restart: always
     volumes:
+      # .env is no longer baked into the image (backend/.dockerignore); mount it read-only.
+      - "./backend/.env:/app/.env:ro"
       - "./backend/databases:/app/databases/"
       - "./backend/proofs:/app/proofs/"
       - "./backend/logs:/app/logs"

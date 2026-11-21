@@ -1,3 +1,10 @@
+// Backend API base, shared by every page script (this file loads first).
+// Empty = the page's own host on port 3000; in production that is exactly the
+// address the pages used to hardcode. A build can pin it
+// with the API_BASE build arg (frontend/Dockerfile rewrites the line below).
+var EUCAN_API_BASE_CONFIGURED = ''; // @API_BASE@
+var EUCAN_API_BASE = EUCAN_API_BASE_CONFIGURED || (window.location.protocol + '//' + window.location.hostname + ':3000');
+
 function decodeCookieValue(value) {
 	if (value == null) return value;
 	try {
@@ -55,7 +62,7 @@ function renderGreeting(username) {
 
 function loginCheck(userId,sessionKey){
     return $.ajax({
-        url: 'https://eucan.ddns.net:3000/session',
+        url: `${EUCAN_API_BASE}/session`,
         type: 'POST',
         dataType: 'json',
         headers: {

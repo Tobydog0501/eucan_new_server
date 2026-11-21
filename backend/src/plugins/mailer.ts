@@ -12,6 +12,11 @@ function smtpPort(): number {
     return Number.isInteger(port) && port > 0 && port < 65536 ? port : 25;
 }
 
+/** MAIL_DISABLED=1 (test sites): never open an SMTP connection or send mail. */
+export function mailDisabled(): boolean {
+    return process.env.MAIL_DISABLED === "1";
+}
+
 export class mailer{
     private option:SMTPTransport.Options;
     private transporter:Transporter
@@ -37,6 +42,10 @@ export class mailer{
 
     verify():boolean{
         var ret:boolean = false;
+        if (mailDisabled()) {
+            console.log("Mailer disabled (MAIL_DISABLED=1); no SMTP connection is made.");
+            return true;
+        }
         this.transporter.verify(function (error, success) {
             if (error) {
                 console.error(error);
@@ -69,6 +78,10 @@ export class mailer{
     }
 
     async send(mail:string,title:string,text:string):Promise<any>{
+        if (mailDisabled()) {
+            console.log(`[MAIL_DISABLED] not sent: subject="${title}"`);
+            return { disabled: true };
+        }
         var message = {
             from: `"祐肯企業請假系統訊息" <${process.env.USER_MAIL}>`, // listed in rfc822 message header
             to: `${mail}`, // listed in rfc822 message header

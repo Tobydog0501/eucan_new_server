@@ -14,7 +14,7 @@ $(function() {
     $("#loading").show();
 
     $.ajax({
-        url: "https://eucan.ddns.net:3000/query",
+        url: `${EUCAN_API_BASE}/query`,
         type: "POST",
         dataType: "json",
         headers: { "Content-Type": "application/json" },
@@ -71,7 +71,7 @@ function handleApproval(serialnum, permit) {
     const userId = readCookie("id");
 
     $.ajax({
-        url: "https://eucan.ddns.net:3000/permit",
+        url: `${EUCAN_API_BASE}/permit`,
         type: "POST",
         dataType: "json",
         headers: { "Content-Type": "application/json" },

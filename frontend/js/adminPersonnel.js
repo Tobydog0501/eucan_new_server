@@ -10,7 +10,7 @@ $(function () {
     loginCheck(userId, sessionKey);
 
     $.ajax({
-        url: `https://eucan.ddns.net:3000/users`,
+        url: `${EUCAN_API_BASE}/users`,
         type: 'POST',
         dataType: 'json',
         headers: {
