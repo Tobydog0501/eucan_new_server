@@ -201,6 +201,8 @@ test('missed-punch notice: sending on -> mails through SMTP once; a failed send 
   const smtpUp = await startFakeSmtp('accept');
   try {
     await withJob(async ({ cwd, file, db, job }) => {
+      // Plain fixture day: emp8 keeps both punches and emp9 has no make-up
+      // request, so the notices go to emp1 (out), emp3 and emp9 (both).
       seedDay(file, TUESDAY);
       const { mailer } = require(path.join(require('../testlib/harness').BUILD_DIR, 'plugins', 'mailer.js'));
       const mailerFor = (smtp) => {
@@ -217,14 +219,14 @@ test('missed-punch notice: sending on -> mails through SMTP once; a failed send 
       // Server refuses: every notice fails and is recorded as failed.
       const down = await job.runMissedPunchCheck(db, log, { date: TUESDAY, sender: mailerFor(smtpDown), config });
       assert.deepEqual(down.notified, []);
-      assert.deepEqual(down.failed.sort(), ['emp1', 'emp3', 'emp8']);
+      assert.deepEqual(down.failed.sort(), ['emp1', 'emp3', 'emp9']);
       assert.ok(notices(file).every((n) => n.status === 'failed' && n.channel === 'smtp'));
 
       // Next run: retried and delivered, one mail each.
       const up = await job.runMissedPunchCheck(db, log, { date: TUESDAY, sender: mailerFor(smtpUp), config });
-      assert.deepEqual(up.notified.map((n) => [n.id, n.channel]).sort(), [['emp1', 'smtp'], ['emp3', 'smtp'], ['emp8', 'smtp']]);
+      assert.deepEqual(up.notified.map((n) => [n.id, n.channel]).sort(), [['emp1', 'smtp'], ['emp3', 'smtp'], ['emp9', 'smtp']]);
       await smtpUp.waitForMessages(3);
-      for (const id of ['emp1', 'emp3', 'emp8']) {
+      for (const id of ['emp1', 'emp3', 'emp9']) {
         assert.equal(smtpUp.messages.filter((m) => m.includes(`To: ${id}@example.invalid`)).length, 1, id);
       }
       assert.ok(smtpUp.messages.every((m) => /^Subject: /m.test(m)));
