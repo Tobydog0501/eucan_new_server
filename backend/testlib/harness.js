@@ -113,7 +113,7 @@ function request(port, method, route, body) {
       let text = '';
       res.setEncoding('utf8');
       res.on('data', (chunk) => { text += chunk; });
-      res.on('end', () => resolve({ status: res.statusCode, text }));
+      res.on('end', () => resolve({ status: res.statusCode, text, headers: res.headers }));
       res.on('error', reject);
     });
     req.setTimeout(WAIT_MS, () => req.destroy(new Error(`${method} ${route} timed out`)));
@@ -292,6 +292,15 @@ async function startServer(options = {}) {
     return { status: res.status, text: res.text, json };
   }
 
+  // GET with a query string; `json` is null when the body is not JSON.
+  async function get(route, query = {}) {
+    const qs = new URLSearchParams(query).toString();
+    const res = await request(port, 'GET', qs ? `${route}?${qs}` : route);
+    let json = null;
+    try { json = JSON.parse(res.text); } catch { /* not JSON */ }
+    return { status: res.status, text: res.text, json, headers: res.headers };
+  }
+
   // The process is still running and answers a fresh request.
   async function alive() {
     if (proc.exitCode !== null) return false;
@@ -314,7 +323,7 @@ async function startServer(options = {}) {
     }
   }
 
-  return { base, cwd, post, alive, withDb, waitForOutput, smtp, stop, output: () => output };
+  return { base, cwd, post, get, alive, withDb, waitForOutput, smtp, stop, output: () => output };
 }
 
 /**
