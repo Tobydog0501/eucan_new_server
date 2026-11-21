@@ -11,6 +11,9 @@ services:
       args:
         # Empty: pages call port 3000 on the host they were served from.
         API_BASE: "${TEST_API_BASE:-}"
+        # Test cloud-history folders; empty hides the links.
+        CLOUD_HISTORY_URL_CALENDAR: "${TEST_CLOUD_HISTORY_URL_CALENDAR:-}"
+        CLOUD_HISTORY_URL_RECORD: "${TEST_CLOUD_HISTORY_URL_RECORD:-}"
     ports:
       - "8000:8000"
     volumes:
