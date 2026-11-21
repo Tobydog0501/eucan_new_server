@@ -113,6 +113,20 @@ TEST_HOST=<測試主機名稱> docker compose -p eucan-test -f docker-compose-te
 
 `docker-compose-test.yml` 已把上表後端各項設成安全的測試值。compose 的 `environment:` 會蓋過 `.env` 的同名值，所以每一項都要明確設定，不要留空。
 
+### 用 Mailpit 收測試信（選用）
+
+`docker-compose.mailpit.example.yml` 會多開一個 Mailpit 容器，後端改寄到 `mailpit:1025`。所有信都留在 Mailpit，不會寄出去，可以在 `http://<測試主機>:8025/` 查看，也可以用 API `GET /api/v1/messages` 查詢。
+
+```sh
+MAILPIT_UI_BIND=<測試主機的內網 IP> docker compose -p eucan-test -f docker-compose-test.yml -f docker-compose.mailpit.example.yml up -d
+```
+
+- 不要設定任何 `MP_SMTP_RELAY_*`、`MP_SMTP_FORWARD_*`。沒有這些設定，Mailpit 就沒辦法把信轉寄出去。
+- 8025 只能綁內網位址（預設 `127.0.0.1`）。Mailpit 的 UI 和 API 沒有登入保護。
+- 1025 不對外，只有 compose 網路內的後端連得到。
+- Mailpit 沒有提供 SMTP AUTH，nodemailer 會自動略過登入，所以 `USER_PWD` 只要填假值就好。
+- 後端重建後，前端 nginx 會留著舊的後端 IP（`/healthz` 回 502）。這時要 `docker restart` 前端容器。
+
 ### root 登入的 2FA
 
 root 登入時，後端會把 root 的 2FA 密鑰和驗證碼送到 `TOTP_VALIDATE_URL`（預設是外部的驗證服務）。測試站**不可**外連，所以：
