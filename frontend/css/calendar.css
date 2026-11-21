@@ -1,84 +1,61 @@
-nav {
-	font-size: 20px;
-}
-
-
-header img {
-	width: 130px;
-}
+/* =========================================================================
+   行事曆（員工 / 主管）與打卡紀錄頁共用的版面。
+   顏色、圓角、陰影一律取自 theme.css 的 --eu-* 變數。
+   ========================================================================= */
 
 .calendar-toolbar {
 	display: flex;
 	justify-content: flex-start;
 	align-items: center;
-	margin: 0.75rem 0 0.75rem;
+	margin: 0 0 var(--eu-space-4);
 }
 
 .calendar-filters {
 	display: flex;
-	gap: 0.5rem;
-	flex-wrap: nowrap;
+	gap: var(--eu-space-2);
+	flex-wrap: wrap;
 	align-items: center;
-	white-space: nowrap;
 }
 
 .calendar-select {
 	width: auto;
-	min-width: 88px;
-	font-size: 0.88rem;
-	/* left padding then right padding larger to avoid overlapping native arrow */
-	padding: 0.25rem 1.1rem 0.25rem 0.55rem;
-	height: 34px;
-	line-height: 1.2;
-
-	/* ensure native select arrow has space and aligns to right */
-	background-position: right 0.6rem center;
-	background-repeat: no-repeat;
+	min-width: 96px;
 }
 
 .calendar-shell {
-	background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%);
-	border: 1px solid #e6ebf2;
-	border-radius: 20px;
-	box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
-	padding: 0.9rem;
+	background: var(--eu-surface);
+	border: 1px solid var(--eu-border);
+	border-radius: var(--eu-radius);
+	box-shadow: var(--eu-shadow);
+	padding: var(--eu-space-3);
 	overflow-x: auto;
-	margin-top: 0.25rem;
 }
 
 .calendar-headline {
 	display: flex;
 	flex-direction: column;
-	gap: 0.25rem;
-	margin-bottom: 1rem;
+	gap: var(--eu-space-1);
+	margin-bottom: var(--eu-space-4);
 }
 
 .calendar-title {
 	font-size: 0.8rem;
 	font-weight: 800;
-	color: #0f172a;
-	letter-spacing: 0.02em;
+	color: var(--eu-ink);
 }
 
 .calendar-subtitle {
 	font-size: 0.75rem;
-	color: #64748b;
+	color: var(--eu-muted);
 }
 
-/* Page title (top H1) on calendar page */
-.page-title {
-	font-size: 1.25rem;
-	/* roughly half of typical h1 */
-	font-weight: 700;
-	margin: 0.5rem 0 0.5rem 0;
-}
-
+/* ---- Card-grid calendar (kept for compatibility) ---- */
 .calendar-header-row,
 .calendar-grid {
 	display: grid;
-	grid-template-columns: repeat(7, minmax(180px, 1fr));
+	grid-template-columns: repeat(7, minmax(150px, 1fr));
 	gap: 10px;
-	min-width: 1260px;
+	min-width: 1050px;
 }
 
 .calendar-header-row {
@@ -88,30 +65,26 @@ header img {
 .calendar-weekday {
 	text-align: center;
 	font-weight: 700;
-	font-size: 1rem;
-	color: #334155;
-	padding: 0.65rem 0;
-	background: #dfeeff;
-	border-radius: 14px;
+	color: var(--eu-muted);
+	padding: 0.6rem 0;
+	background: var(--eu-surface-alt);
+	border-radius: var(--eu-radius-sm);
 }
 
 .calendar-day {
-	min-height: 180px;
-	background: #ffffff;
-	border: 1px solid #d9e2ec;
-	border-radius: 16px;
-	padding: 0.8rem;
-	box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+	min-height: 150px;
+	background: var(--eu-surface);
+	border: 1px solid var(--eu-border);
+	border-radius: var(--eu-radius);
+	padding: var(--eu-space-3);
 	display: flex;
 	flex-direction: column;
-	gap: 0.5rem;
-	overflow: visible;
+	gap: var(--eu-space-2);
 }
 
 .calendar-day-empty {
-	background: linear-gradient(180deg, #fafbfd 0%, #f4f7fb 100%);
+	background: var(--eu-surface-alt);
 	border-style: dashed;
-	box-shadow: none;
 }
 
 .calendar-day-top {
@@ -124,12 +97,11 @@ header img {
 	width: 2rem;
 	height: 2rem;
 	border-radius: 999px;
-	background: #0f172a;
-	color: #ffffff;
+	background: var(--eu-ink);
+	color: #fff;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	font-size: 1rem;
 	font-weight: 700;
 }
 
@@ -138,97 +110,82 @@ header img {
 	flex-direction: column;
 	gap: 0.4rem;
 	flex: 1;
-	overflow: visible;
 }
 
 .calendar-event {
-	background: #e8f1ff;
-	border-left: 4px solid #3b82f6;
-	border-radius: 10px;
-	padding: 0.4rem 0.55rem;
-	font-size: 0.9rem;
+	background: var(--eu-brand-soft);
+	border-left: 3px solid var(--eu-brand);
+	border-radius: var(--eu-radius-sm);
+	padding: 0.35rem 0.5rem;
+	font-size: var(--eu-fs-sm);
 	line-height: 1.25;
-	color: #0f172a;
+	color: var(--eu-ink);
 	white-space: nowrap;
-	width: 100%;
-	box-sizing: border-box;
-	overflow: visible;
-	text-overflow: clip;
-	word-break: keep-all;
 	font-variant-numeric: tabular-nums;
 }
 
 .calendar-no-event,
 .calendar-empty {
-	color: #64748b;
-	font-size: 0.9rem;
+	color: var(--eu-muted);
+	font-size: var(--eu-fs-sm);
 	line-height: 1.5;
+	padding: var(--eu-space-2);
 }
 
-/* spreadsheet-like table style */
+/* ---- Month table that employeeCalendar.js / adminCalendar.js render ---- */
 .calendar-table {
 	width: 100%;
 	border-collapse: collapse;
-	font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
 	table-layout: fixed;
 	min-width: 980px;
 }
 
 .calendar-table th,
 .calendar-table td {
-	border: 1px solid #111;
+	border: 1px solid var(--eu-border);
 	vertical-align: top;
 	width: 14.285%;
-	min-width: 140px;
 	height: 110px;
-	font-size: 0.9rem;
-	color: #111;
-	box-sizing: border-box;
+	padding: 6px 8px;
+	font-size: var(--eu-fs-sm);
+	color: var(--eu-text);
+}
+
+.calendar-table td:empty {
+	background: var(--eu-surface-alt);
 }
 
 .calendar-table thead th {
-	background: #fff;
-	font-weight: 700;
+	background: var(--eu-surface-alt);
+	color: var(--eu-muted);
+	font-weight: 600;
 	text-align: center;
-	/* reduce header row height */
-	padding: 6px 8px;
-	height: 36px;
+	height: 38px;
 	vertical-align: middle;
 }
 
 .cal-day-label {
 	font-weight: 700;
-	margin-bottom: 4px;
-	font-size: 0.92rem;
+	color: var(--eu-ink);
+	margin-bottom: 6px;
 }
 
 .cal-line {
-	white-space: nowrap;
-	overflow: hidden;
+	white-space: normal;
+	overflow-wrap: anywhere;
 	font-size: 0.8rem;
-	line-height: 1.2;
+	line-height: 1.25;
 	margin-bottom: 4px;
+	padding: 2px 6px;
+	background: var(--eu-brand-soft);
+	border-left: 3px solid var(--eu-brand);
+	border-radius: 4px;
+	color: var(--eu-ink);
 }
 
-.record-page-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	gap: 1rem;
-	flex-wrap: wrap;
-}
-
-.record-font-controls {
-	display: flex;
-	align-items: center;
-	gap: 0.4rem;
-	margin-left: auto;
-}
-
-.record-font-label {
-	font-size: 0.9rem;
-	font-weight: 700;
-	color: #334155;
+/* ---- 打卡紀錄 (admin/record.html) ---- */
+:root {
+	--record-font-scale: 1;
 }
 
 .record-toolbar {
@@ -240,88 +197,90 @@ header img {
 }
 
 .record-shell {
-	padding: 1rem;
+	padding: var(--eu-space-4);
 }
 
 .record-summary {
 	font-size: calc(1rem * var(--record-font-scale, 1));
-	font-weight: 800;
-	margin-bottom: 0.75rem;
-	color: #0f172a;
+	font-weight: 700;
+	margin-bottom: var(--eu-space-3);
+	color: var(--eu-ink);
 }
 
 .record-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-	gap: 0.75rem;
+	grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+	gap: var(--eu-space-3);
 }
 
 .record-card {
-	border: 1px solid #d9e2ec;
-	border-radius: 16px;
-	background: #ffffff;
-	padding: 0.9rem;
-	box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
-	font-size: calc(0.95rem * var(--record-font-scale, 1));
+	border: 1px solid var(--eu-border);
+	border-radius: var(--eu-radius);
+	background: var(--eu-surface);
+	padding: var(--eu-space-4);
+	font-size: calc(0.9375rem * var(--record-font-scale, 1));
 	line-height: 1.5;
 }
 
 .record-card-name {
-	font-weight: 800;
-	color: #0f172a;
-	margin-bottom: 0.55rem;
-	font-size: calc(1.05rem * var(--record-font-scale, 1));
+	font-weight: 700;
+	color: var(--eu-ink);
+	margin-bottom: var(--eu-space-2);
+	font-size: calc(1.0625rem * var(--record-font-scale, 1));
 }
 
 .record-card-row {
 	display: flex;
 	justify-content: space-between;
-	gap: 0.8rem;
-	padding: 0.3rem 0;
-	border-top: 1px solid #edf2f7;
+	gap: var(--eu-space-3);
+	padding: 0.35rem 0;
+	border-top: 1px solid var(--eu-border);
 	word-break: break-word;
 }
 
 .record-card-row span:first-child {
-	font-weight: 700;
-	color: #475569;
+	font-weight: 600;
+	color: var(--eu-muted);
 	flex-shrink: 0;
 }
 
 .record-card-row span:last-child {
 	text-align: right;
-	color: #111827;
+	color: var(--eu-ink);
 	flex: 1;
+	font-variant-numeric: tabular-nums;
 }
 
 .record-card-row-missing {
-	background: #dc2626;
-	border-radius: 8px;
-	padding: 0.3rem 0.45rem;
+	background: var(--eu-danger-soft);
+	border-radius: var(--eu-radius-sm);
+	border-top-color: transparent;
+	padding: 0.35rem 0.5rem;
 	margin-top: 0.25rem;
 }
 
 .record-card-row-missing span:first-child,
 .record-card-row-missing span:last-child {
-	color: #ffffff;
+	color: #991b1b;
+	font-weight: 700;
 }
 
 .record-missing {
-	margin-top: 0.5rem;
+	margin-top: var(--eu-space-2);
 	padding: 0.45rem 0.6rem;
-	border-radius: 10px;
-	background: #fff1f2;
-	color: #be123c;
+	border-radius: var(--eu-radius-sm);
+	background: var(--eu-danger-soft);
+	color: #991b1b;
 	font-weight: 700;
-	font-size: calc(0.9rem * var(--record-font-scale, 1));
+	font-size: calc(0.875rem * var(--record-font-scale, 1));
 }
 
 .record-card-actions {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 0.5rem;
-	margin-top: 0.75rem;
+	gap: var(--eu-space-2);
+	margin-top: var(--eu-space-3);
 }
 
 .record-download-wrap {
@@ -335,8 +294,8 @@ header img {
 .record-month-bar {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 0.5rem;
-	margin-bottom: 0.75rem;
+	gap: var(--eu-space-2);
+	margin-bottom: var(--eu-space-3);
 }
 
 .record-table-wrap {
@@ -347,8 +306,7 @@ header img {
 .record-calendar-page .record-month-table {
 	min-width: 920px;
 	margin-bottom: 0;
-	font-size: calc(0.95rem * var(--record-font-scale, 1));
-	border: 1px solid #d9e2ec;
+	font-size: calc(0.9375rem * var(--record-font-scale, 1));
 }
 
 .record-month-table th,
@@ -362,78 +320,24 @@ header img {
 	word-break: break-word;
 }
 
-:root {
-	--record-font-scale: 1;
-}
+@media (max-width: 575.98px) {
+	.calendar-filters .calendar-select {
+		flex: 1 1 calc(50% - var(--eu-space-2));
+	}
 
-@media (max-width: 1200px) {
+	.calendar-filters .btn {
+		flex: 1 1 auto;
+	}
+
 	.calendar-shell {
-		padding: 0.8rem;
+		padding: var(--eu-space-2);
 	}
 
-	.calendar-header-row,
-	.calendar-grid {
-		grid-template-columns: repeat(7, minmax(170px, 1fr));
-		min-width: 1190px;
-	}
-
-	.calendar-day {
-		min-height: 170px;
-	}
-}
-
-@media (max-width: 992px) {
-	.calendar-shell {
-		padding: 0.8rem;
-	}
-
-	.calendar-header-row,
-	.calendar-grid {
-		grid-template-columns: repeat(7, minmax(160px, 1fr));
-		min-width: 1120px;
-	}
-
-	.calendar-day {
-		min-height: 160px;
-	}
-}
-
-@media (max-width: 768px) {
-	.calendar-toolbar {
-		flex-direction: column;
-		align-items: flex-start;
-	}
-
-	.calendar-header-row,
-	.calendar-grid {
-		grid-template-columns: repeat(7, minmax(150px, 1fr));
-		min-width: 1050px;
-	}
-
-	.calendar-weekday {
-		font-size: 0.95rem;
-	}
-
-	.calendar-day {
-		min-height: 150px;
-		padding: 0.65rem;
-	}
-
-	.record-page-header {
-		align-items: flex-start;
+	.record-shell {
+		padding: var(--eu-space-3);
 	}
 
 	.record-grid {
 		grid-template-columns: 1fr;
-	}
-
-	.calendar-day-number {
-		width: 1.8rem;
-		height: 1.8rem;
-		font-size: 0.9rem;
-	}
-
-	.calendar-event {
-		font-size: 0.9rem;
 	}
 }

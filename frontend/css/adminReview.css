@@ -1,80 +1,68 @@
-/* 🔹 Header 樣式 */
-nav {
-    font-size: 20px;
+/* 假單審核：adminReview.js 產生的 .card 假單以格狀排列 */
+.review-count h2 {
+    margin: 0;
+    font-size: var(--eu-fs-sm);
+    font-weight: 600;
+    color: var(--eu-muted);
 }
 
-header img {
-    width: 130px;
+.review-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--eu-space-4);
+    align-items: start;
 }
 
-/* 🔹 卡片樣式 */
-.card {
-    width: 30rem;
-    font-size: 22px;  /* 適當調整大小，避免文字過大 */
-    margin-top: 50px;
-    font-weight: bold;
-    border-radius: 10px; /* 增加圓角，使外觀更柔和 */
-    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2); /* 添加陰影增強立體感 */
-    padding: 20px;
-    background: #fff; /* 白色背景，確保清晰可讀 */
+.review-list > p {
+    grid-column: 1 / -1;
+    padding: var(--eu-space-6) var(--eu-space-4);
+    margin: 0;
+    background: var(--eu-surface);
+    border: 1px dashed var(--eu-border-strong);
+    border-radius: var(--eu-radius);
 }
 
-.card-title {
-    font-size: 25px;
-    font-weight: bold;
-    color: #333; /* 讓標題顏色更顯眼 */
+.review-list .card {
+    margin: 0 !important;
+    padding: var(--eu-space-4) !important;
 }
 
-/* 🔹 按鈕樣式 */
-.btn {
-    font-size: 24px; /* 適當縮小，避免過大 */
-    padding: 12px 20px;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background 0.3s ease-in-out;
+.review-list .card-title {
+    font-size: var(--eu-fs-sm);
+    font-weight: 700;
+    color: var(--eu-muted);
+    margin-bottom: var(--eu-space-3);
+    padding-bottom: var(--eu-space-2);
+    border-bottom: 1px solid var(--eu-border);
 }
 
-/* 核准按鈕 */
-.btn-yes {
-    background-color: #28a745;
-    color: white;
+.review-list .list-group li {
+    padding: 0.2rem 0;
+    color: var(--eu-text);
+    word-break: break-word;
 }
 
-.btn-yes:hover {
-    background-color: #1e7e34;
+.review-list .card-name {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: var(--eu-ink) !important;
 }
 
-/* 拒絕按鈕 */
-.btn-no {
-    background-color: #dc3545;
-    color: white;
-}
-
-.btn-no:hover {
-    background-color: #a71d2a;
-}
-
-/* 🔹 卡片內部按鈕區塊 */
-.card-button {
+.review-list .card-button {
     display: flex;
-    justify-content: space-between;
-    margin-top: 15px;
+    gap: var(--eu-space-2);
+    margin-top: var(--eu-space-3) !important;
+    padding-top: var(--eu-space-3) !important;
+    border-top: 1px solid var(--eu-border);
 }
 
-/* 🔹 響應式設計，適用於手機 */
-@media (max-width: 768px) {
-    nav {
-        font-size: 18px;
-    }
+.review-list .card-button .btn {
+    flex: 1;
+    margin: 0 !important;
+}
 
-    .card {
-        width: 100%; /* 讓卡片在小螢幕上自適應 */
-        font-size: 20px;
-    }
-
-    .btn {
-        font-size: 20px;
-        padding: 10px 16px;
-    }
+/* Bootstrap draws .card > .list-group top/bottom borders; the title rule is enough */
+.review-list .card > .list-group {
+    border-top: 0;
+    border-bottom: 0;
 }

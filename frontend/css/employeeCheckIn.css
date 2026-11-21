@@ -1,37 +1,99 @@
-nav {
-    font-size: 20px;
-}
-
-header img {
-    width: 130px;
-}
-
-section img {
-    width: 40vh;
-}
-
-.btn {
-    margin-top: 10vh;
-    padding: 10px 20px;
-    font-size: 20px;
-    font-weight: bold;
-    transition: transform 0.2s;
-}
-
-.btn:active {
-    transform: scale(0.95);
-}
-
-.table {
-    font-size: 25px;
-    border: 1px solid rgb(140, 140, 140);
+/* 打卡頁：目前時間、上下班兩顆大按鈕、今日狀態 */
+.punch-clock {
+    margin: 0 0 var(--eu-space-4);
     text-align: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--eu-ink);
+    font-variant-numeric: tabular-nums;
 }
 
-#time {
-    font-size: 18px;
-    font-weight: bold;
-    color: #333;
-    text-align: center;
-    margin-top: 10px;
+.punch-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--eu-space-4);
+    margin-bottom: var(--eu-space-5);
+}
+
+.punch-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
+    overflow: hidden;
+    background: var(--eu-surface);
+    border: 1px solid var(--eu-border);
+    border-radius: var(--eu-radius);
+    box-shadow: var(--eu-shadow);
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.punch-btn img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 3 / 2;
+    object-fit: cover;
+}
+
+.punch-btn-label {
+    display: block;
+    padding: var(--eu-space-3);
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.punch-btn-in .punch-btn-label {
+    background: var(--eu-success);
+}
+
+.punch-btn-out .punch-btn-label {
+    background: var(--eu-brand);
+}
+
+.punch-btn:hover {
+    box-shadow: var(--eu-shadow-lg);
+    transform: translateY(-1px);
+}
+
+.punch-btn:active {
+    transform: scale(0.98);
+}
+
+.punch-btn:focus-visible {
+    outline: 3px solid rgba(200, 16, 46, 0.35);
+    outline-offset: 2px;
+}
+
+.punch-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.punch-status td {
+    font-size: 1.0625rem;
+    font-weight: 600;
+    color: var(--eu-ink);
+    font-variant-numeric: tabular-nums;
+}
+
+.punch-notes {
+    margin: 0;
+    padding-left: 1.25rem;
+    color: var(--eu-text);
+    font-size: var(--eu-fs-sm);
+    line-height: 1.7;
+}
+
+@media (max-width: 575.98px) {
+    .punch-actions {
+        gap: var(--eu-space-3);
+    }
+
+    .punch-btn-label {
+        padding: var(--eu-space-2);
+        font-size: 1rem;
+    }
 }
