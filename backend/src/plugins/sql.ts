@@ -5,6 +5,7 @@ import { getSplitTimestamp, fetch_all_nwd, getROCYearsInRange } from "./dayoff_c
 import { userinfo, dayoffinfo, clockinrecord, requestquery, logininfo, digit, dayofftype, dayoffinfo_ret } from "../types/types";
 import { ClockEdit, ClockSheetRow, normalizeTime } from "./clockin_sheet";
 import { join } from "path";
+import { runMigrations } from "./migrations";
 // const logger = require("./logger.js");
 const log: logger = new logger(`./logs/${new Date().toISOString().split('T')[0]}.log`);
 
@@ -17,6 +18,10 @@ export class sql {
     this.login_db.pragma('journal_mode = WAL');
     this.ensureUserinfoLeaveDateColumn();
     this.ensureClockinTables();
+    const { applied } = runMigrations(this.login_db);
+    if (applied.length > 0) {
+      log.logFormat(`Database migrations applied: ${applied.join("; ")}.`, new Date());
+    }
     log.logFormat("Database is connected with server.", new Date());
   }
 
@@ -538,31 +543,25 @@ export class sql {
     } else {
       datetime = `${year}-${month}-${date} ${hour}:${min}`;
     }
-    const data: clockinrecord[] = (this.login_db.prepare(`SELECT * FROM clockinrecord WHERE date= ? AND id= ?;`).all(datetime.split(" ")[0], user) as clockinrecord[]);
+    const day = datetime.split(" ")[0];
+    const time = datetime.split(" ")[1];
+    // Soft-deleted punches stay in the table (see softDeletePunch) but are
+    // invisible here: they are not returned, not filled in, and a new punch
+    // never reuses their number.
+    const all = (this.login_db.prepare(`SELECT * FROM clockinrecord WHERE date= ? AND id= ? ORDER BY num;`).all(day, user) as clockinrecord[]);
+    const data = all.filter((row) => row.deleted_at == null).map(livePunch);
     if (type == 0) {
       return data;
     }
+    const column = type == 1 ? "clockin" : "clockout";
     const name: string = (this.login_db.prepare(`SELECT name FROM userinfo WHERE id= ?;`).get(user) as userinfo)["name"];
-    if (data.length != 0) {
-      // exists, use UPDATE
-      // if(data[0][`clock${type==1?"in":"out"}`]) return null;
-      let i: number = 0;
-      for (i; i < data.length; i++) {
-        if (data[i][`clock${type == 1 ? "in" : "out"}`]) continue
-        else break;
-      }
-      if (i < data.length) {
-        // UPDATE
-        this.login_db.prepare(`UPDATE clockinrecord SET clock${type == 1 ? "in" : "out"}= ? WHERE id= ? AND num= ? AND date= ?;`).run(datetime.split(" ")[1], user, i + 1, datetime.split(" ")[0]);
-        return { "status": 200 };
-      }
-      this.login_db.prepare(`INSERT INTO clockinrecord (id,name,date,clock${type == 1 ? "in" : "out"},num) VALUES (?,?,?,?,?);`).run(user, name, datetime.split(" ")[0], datetime.split(" ")[1], i + 1);
-      // while() i++;
-      // if(data[])
-    } else {
-      // use INSERT
-      this.login_db.prepare(`INSERT INTO clockinrecord (id,name,date,clock${type == 1 ? "in" : "out"},num) VALUES (?,?,?,?,?);`).run(user, name, datetime.split(" ")[0], datetime.split(" ")[1], 1);
+    const open = data.find((row) => !row[column]);
+    if (open) {
+      this.login_db.prepare(`UPDATE clockinrecord SET ${column}= ? WHERE id= ? AND num= ? AND date= ? AND deleted_at IS NULL;`).run(time, user, open.num, day);
+      return { "status": 200 };
     }
+    const nextNum = all.reduce((max, row) => Math.max(max, Number(row.num) || 0), 0) + 1;
+    this.login_db.prepare(`INSERT INTO clockinrecord (id,name,date,${column},num) VALUES (?,?,?,?,?);`).run(user, name, day, time, nextNum);
     return { "status": 200 };
   }
 
@@ -634,12 +633,12 @@ export class sql {
    * @param {string} month 
    */
   async clockinRecord(year: digit, month: digit): Promise<[] | clockinrecord[]> {
-    const query = (this.login_db.prepare(`SELECT * FROM clockinrecord WHERE date LIKE ?;`).all(`${year}-${month}-%`) as clockinrecord[] | []);
+    const query = (this.login_db.prepare(`SELECT * FROM clockinrecord WHERE date LIKE ? AND deleted_at IS NULL;`).all(`${year}-${month}-%`) as clockinrecord[]).map(livePunch);
     return new Promise(res => { res(query) });
   }
 
   clockinYears(): number[] {
-    const rows = this.login_db.prepare(`SELECT DISTINCT substr(date, 1, 4) AS year FROM clockinrecord ORDER BY year;`).all() as Array<{ year: string }>;
+    const rows = this.login_db.prepare(`SELECT DISTINCT substr(date, 1, 4) AS year FROM clockinrecord WHERE deleted_at IS NULL ORDER BY year;`).all() as Array<{ year: string }>;
     return rows
       .map((row) => parseInt(row.year, 10))
       .filter((year) => !Number.isNaN(year));
@@ -897,7 +896,7 @@ export class sql {
     const parts = this.clockMonthParts(year, month);
     const prefix = `${parts.year}-${parts.month}-%`;
     const rows = this.login_db.prepare(
-      `SELECT id FROM clockinrecord WHERE date LIKE ?
+      `SELECT id FROM clockinrecord WHERE date LIKE ? AND deleted_at IS NULL
        UNION
        SELECT id FROM clockin_edit WHERE date LIKE ?
        UNION
@@ -927,6 +926,96 @@ export class sql {
       }
     }
     return ids;
+  }
+
+  /**
+   * Every punch of one employee on one day, lowest number first. Soft-deleted
+   * punches are only included when `includeDeleted` is set (root's view).
+   */
+  clockinPunches(id: string, date: string, includeDeleted: boolean): PunchRow[] {
+    const rows = this.login_db.prepare(
+      `SELECT id, name, date, num, clockin, clockout, deleted_at, deleted_by, delete_reason
+       FROM clockinrecord WHERE id = ? AND date = ?${includeDeleted ? "" : " AND deleted_at IS NULL"} ORDER BY num;`
+    ).all(id, date) as clockinrecord[];
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      date: row.date,
+      num: Number(row.num),
+      clockin: normalizeTime(row.clockin),
+      clockout: normalizeTime(row.clockout),
+      deleted: row.deleted_at != null,
+      deletedAt: row.deleted_at ?? null,
+      deletedBy: row.deleted_by ?? null,
+      deleteReason: row.delete_reason ?? null,
+    }));
+  }
+
+  /**
+   * Soft-delete one punch: mark it and write an audit row, in one transaction.
+   * Returns 'missing' when no live punch matches, 'ambiguous' when more than
+   * one does (legacy duplicates), otherwise 'done'.
+   */
+  softDeletePunch(target: PunchKey, actor: { id: string, name: string }, reason: string): PunchChange {
+    return this.login_db.transaction((): PunchChange => {
+      const live = this.login_db.prepare(
+        `SELECT clockin, clockout FROM clockinrecord WHERE id = ? AND date = ? AND num = ? AND deleted_at IS NULL;`
+      ).all(target.id, target.date, target.num) as Array<{ clockin: string | null, clockout: string | null }>;
+      if (live.length === 0) return "missing";
+      if (live.length > 1) return "ambiguous";
+      this.login_db.prepare(
+        `UPDATE clockinrecord SET deleted_at = strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'), deleted_by = ?, delete_reason = ?
+         WHERE id = ? AND date = ? AND num = ? AND deleted_at IS NULL;`
+      ).run(actor.id, reason, target.id, target.date, target.num);
+      this.writePunchAudit("delete", target, live[0], actor, reason);
+      return "done";
+    })();
+  }
+
+  /** Undo softDeletePunch; same return values. The audit trail keeps both events. */
+  restorePunch(target: PunchKey, actor: { id: string, name: string }, reason: string): PunchChange {
+    return this.login_db.transaction((): PunchChange => {
+      const rows = this.login_db.prepare(
+        `SELECT clockin, clockout, deleted_at FROM clockinrecord WHERE id = ? AND date = ? AND num = ?;`
+      ).all(target.id, target.date, target.num) as Array<{ clockin: string | null, clockout: string | null, deleted_at: string | null }>;
+      const deleted = rows.filter((row) => row.deleted_at != null);
+      if (deleted.length === 0) return "missing";
+      // Restoring next to another punch with the same number would make the
+      // two indistinguishable.
+      if (rows.length > 1) return "ambiguous";
+      this.login_db.prepare(
+        `UPDATE clockinrecord SET deleted_at = NULL, deleted_by = NULL, delete_reason = NULL
+         WHERE id = ? AND date = ? AND num = ? AND deleted_at IS NOT NULL;`
+      ).run(target.id, target.date, target.num);
+      this.writePunchAudit("restore", target, deleted[0], actor, reason);
+      return "done";
+    })();
+  }
+
+  /** Audit trail of punch deletions and restorations, newest first. */
+  punchAudit(filter: { id?: string, date?: string } = {}): PunchAuditRow[] {
+    const clauses: string[] = [];
+    const params: string[] = [];
+    if (filter.id) { clauses.push("punch_id = ?"); params.push(filter.id); }
+    if (filter.date) { clauses.push("punch_date = ?"); params.push(filter.date); }
+    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    return this.login_db.prepare(
+      `SELECT audit_id, action, punch_id, punch_date, punch_num, clockin, clockout, actor_id, actor_name, reason, acted_at
+       FROM clockin_punch_audit${where} ORDER BY audit_id DESC;`
+    ).all(...params) as PunchAuditRow[];
+  }
+
+  private writePunchAudit(
+    action: "delete" | "restore",
+    target: PunchKey,
+    punch: { clockin: string | null, clockout: string | null },
+    actor: { id: string, name: string },
+    reason: string
+  ): void {
+    this.login_db.prepare(
+      `INSERT INTO clockin_punch_audit (action, punch_id, punch_date, punch_num, clockin, clockout, actor_id, actor_name, reason, acted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'));`
+    ).run(action, target.id, target.date, target.num, punch.clockin, punch.clockout, actor.id, actor.name, reason);
   }
 
   private clockMonthParts(year: string | number, month: string | number): { year: string; month: string } {
@@ -965,6 +1054,43 @@ export class sql {
     };
   }
 
+}
+
+export type PunchKey = { id: string, date: string, num: number };
+
+export type PunchChange = "done" | "missing" | "ambiguous";
+
+export type PunchRow = {
+  id: string;
+  name: string;
+  date: string;
+  num: number;
+  clockin: string | null;
+  clockout: string | null;
+  deleted: boolean;
+  deletedAt: string | null;
+  deletedBy: string | null;
+  deleteReason: string | null;
+};
+
+export type PunchAuditRow = {
+  audit_id: number;
+  action: "delete" | "restore";
+  punch_id: string;
+  punch_date: string;
+  punch_num: number;
+  clockin: string | null;
+  clockout: string | null;
+  actor_id: string;
+  actor_name: string;
+  reason: string;
+  acted_at: string;
+};
+
+/** A live punch in the shape callers had before soft delete existed. */
+function livePunch(row: clockinrecord): clockinrecord {
+  const { deleted_at, deleted_by, delete_reason, ...rest } = row;
+  return rest;
 }
 
 type ClockEditSqlRow = {
