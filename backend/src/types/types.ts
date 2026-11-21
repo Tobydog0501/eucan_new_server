@@ -73,7 +73,8 @@ export interface clockinrecord extends table {
   clockout: string | null,
   deleted_at?: string | null,
   deleted_by?: string | null,
-  delete_reason?: string | null
+  delete_reason?: string | null,
+  makeup_request_id?: number | null
 }
 
 export type digit = string | number

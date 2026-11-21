@@ -73,6 +73,19 @@ export function canDeletePunch(actor: { id: string, type: string }, target: { id
   return { ok: true };
 }
 
+/**
+ * May `actor` approve or reject a make-up punch request filed by `applicant`?
+ * Same rule as deleting a punch (an approval creates one), plus nobody reviews
+ * their own request:
+ *  - only admins (supervisors) review; employees never can;
+ *  - requests of built-in or admin accounts may only be reviewed by root.
+ */
+export function canReviewMakeup(actor: { id: string, type: string }, applicant: { id: string, type: string }): Decision {
+  if (actor.type !== "admin") return { ok: false, status: 403, reason: "only admins may review make-up requests" };
+  if (actor.id === applicant.id) return { ok: false, status: 403, reason: "nobody may review their own make-up request" };
+  return canDeletePunch(actor, applicant);
+}
+
 /** Only root may see soft-deleted punches and restore them. */
 export function canRestorePunch(actor: { id: string, type: string }): Decision {
   if (actor.id !== ROOT_ID || actor.type !== "admin") return { ok: false, status: 403, reason: "only root may restore deleted punches" };
