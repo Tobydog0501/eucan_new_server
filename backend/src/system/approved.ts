@@ -36,14 +36,15 @@ module.exports = function utils(sqlPlugin:sql,log:logger,mailer:mailer,req:Reque
         res.sendStatus(400);
         return;
     }
-    if ((year && !/^\d{1,4}$/.test(year)) || (month && !/^\d{1,2}$/.test(month)) || (limitText && !/^\d{1,4}$/.test(limitText))) {
+    if ((year && !/^\d{1,4}$/.test(year)) || (month && !/^(0?[1-9]|1[0-2])$/.test(month)) || (limitText && !/^[1-9]\d{0,3}$/.test(limitText))) {
         res.sendStatus(400);
         return;
     }
     const limit = limitText ? Math.min(parseInt(limitText, 10), MAX_LIMIT) : 0;
 
     let ret = sqlPlugin.checkHash(account,cookie);
-    if (ret==null){
+    // Lists every employee's tickets: admin pages only.
+    if (ret==null||ret["accountType"]!="admin"){
         res.sendStatus(403);
         return;
     }

@@ -1,6 +1,6 @@
 /**
- * Who may create or edit which account. Shared by /register and /modemp so the
- * two endpoints cannot drift apart.
+ * Who may create, edit or delete which account. Shared by /register, /modemp
+ * and /delete so the endpoints cannot drift apart.
  */
 
 /** Account types that may be stored through the API. */
@@ -44,5 +44,16 @@ export function canEdit(actorId: string, target: { id: string, type: string }, c
   if (target.id === ROOT_ID && (changes.type !== "admin" || changes.status !== "1")) {
     return { ok: false, status: 400, reason: "root must remain an active admin" };
   }
+  return { ok: true };
+}
+
+/**
+ * May `actorId` (already known to be an admin) delete the account `target`?
+ *  - built-in accounts (root, monitor) are never deleted through the API;
+ *  - only root may delete admin accounts.
+ */
+export function canDelete(actorId: string, target: { id: string, type: string }): Decision {
+  if (isReservedId(target.id)) return { ok: false, status: 403, reason: "built-in accounts cannot be deleted" };
+  if (target.type === "admin" && actorId !== ROOT_ID) return { ok: false, status: 403, reason: "only root may delete admin accounts" };
   return { ok: true };
 }
