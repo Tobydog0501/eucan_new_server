@@ -1,0 +1,35 @@
+# Optional test-site mail catcher (Mailpit). Every mail the backend sends is
+# kept in Mailpit and shown in its web UI; nothing is delivered.
+#   docker compose -p eucan-test -f docker-compose-test.yml \
+#     -f docker-compose.mailpit.example.yml up -d
+# Then open http://<test host>:8025/ (bind it to a LAN address, never 0.0.0.0
+# on a public host). Do NOT set any MP_SMTP_RELAY_* or MP_SMTP_FORWARD_*
+# option: without them Mailpit cannot send mail anywhere.
+services:
+  backend:
+    environment:
+      MAIL_DISABLED: "0"
+      MAIL_TEST_MODE: "0"
+      SMTP_SERVER: "mailpit"
+      SMTP_PORT: "1025"
+      USER_MAIL: "eucan-test@example.invalid"
+      USER_PWD: "mailpit-dummy-not-a-password"
+      # Keep the allowlist: if SMTP is ever pointed at a real server, only these get mail.
+      SITE_ENV: "test"
+      MAIL_ALLOWED_RECIPIENTS: "${TEST_MAIL_ALLOWED_RECIPIENTS:-}"
+    depends_on:
+      - mailpit
+  mailpit:
+    image: axllent/mailpit:v1.33.1
+    restart: unless-stopped
+    # SMTP (1025) stays on the compose network; only the UI/API is published.
+    ports:
+      - "${MAILPIT_UI_BIND:-127.0.0.1}:8025:8025"
+    environment:
+      MP_MAX_MESSAGES: "1000"
+      MP_DATABASE: "/data/mailpit.db"
+      MP_DISABLE_VERSION_CHECK: "true"
+      MP_BLOCK_REMOTE_CSS_AND_FONTS: "true"
+      TZ: "Asia/Taipei"
+    volumes:
+      - "./testenv/mailpit:/data"
