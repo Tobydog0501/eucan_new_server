@@ -1,6 +1,7 @@
 /**
- * Who may create, edit or delete which account. Shared by /register, /modemp
- * and /delete so the endpoints cannot drift apart.
+ * Who may create, edit or delete which account, and who may delete or restore
+ * clock-in punches. Shared by /register, /modemp, /delete and the punch
+ * endpoints so they cannot drift apart.
  */
 
 /** Account types that may be stored through the API. */
@@ -55,5 +56,25 @@ export function canEdit(actorId: string, target: { id: string, type: string }, c
 export function canDelete(actorId: string, target: { id: string, type: string }): Decision {
   if (isReservedId(target.id)) return { ok: false, status: 403, reason: "built-in accounts cannot be deleted" };
   if (target.type === "admin" && actorId !== ROOT_ID) return { ok: false, status: 403, reason: "only root may delete admin accounts" };
+  return { ok: true };
+}
+
+/**
+ * May `actor` (the caller's own account) soft-delete a clock-in punch that
+ * belongs to `target`? Same shape as canDelete:
+ *  - only admins (supervisors) may delete punches; employees never can;
+ *  - punches of built-in or admin accounts may only be deleted by root.
+ */
+export function canDeletePunch(actor: { id: string, type: string }, target: { id: string, type: string }): Decision {
+  if (actor.type !== "admin") return { ok: false, status: 403, reason: "only admins may delete clock-in punches" };
+  if (actor.id === ROOT_ID) return { ok: true };
+  if (isReservedId(target.id)) return { ok: false, status: 403, reason: "only root may delete punches of built-in accounts" };
+  if (target.type === "admin") return { ok: false, status: 403, reason: "only root may delete punches of admin accounts" };
+  return { ok: true };
+}
+
+/** Only root may see soft-deleted punches and restore them. */
+export function canRestorePunch(actor: { id: string, type: string }): Decision {
+  if (actor.id !== ROOT_ID || actor.type !== "admin") return { ok: false, status: 403, reason: "only root may restore deleted punches" };
   return { ok: true };
 }

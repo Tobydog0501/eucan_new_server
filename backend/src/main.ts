@@ -8,7 +8,8 @@ import { sqli_detect } from './plugins/anti_SQLI';
 import { check_working_day, main as generateCalendarExcel } from './plugins/dayoff_calendar';
 import { startArchiveSchedule } from './plugins/archive_schedule';
 import { aggregateDay, ClockEdit, decideEdit, isRealDate, taipeiToday } from './plugins/clockin_sheet';
-import { personalClockinPdf, readMasterClockinPdf } from './plugins/clockin_archive';
+import { personalClockinPdf, readMasterClockinPdf, writeClockinMaster } from './plugins/clockin_archive';
+import { canDeletePunch, canRestorePunch } from './plugins/account_rules';
 import { onDownloadDone } from './plugins/http_util';
 import path from 'path';
 import fs from 'fs';
@@ -531,6 +532,127 @@ app.post('/api/clockin/edit', async (req: Request, res: Response) => {
     res.sendStatus(500);
   }
 });
+
+// Single punches of one employee on one day, for the delete / restore UI
+// (admin only; soft-deleted punches and the audit trail are root only).
+app.get('/api/clockin/punches', async (req: Request, res: Response) => {
+  try {
+    const account = String(req.query.account || '');
+    const cookie = String(req.query.cookie || '');
+    const id = String(req.query.id || '');
+    const date = String(req.query.date || '');
+    if (!account || !cookie || !id || !isRealDate(date)) {
+      res.sendStatus(400);
+      return;
+    }
+
+    const ret = sqlPlugin.checkHash(account, cookie);
+    if (ret == null || ret['accountType'] != 'admin') {
+      res.sendStatus(403);
+      return;
+    }
+
+    const isRoot = canRestorePunch({ id: account, type: ret['accountType'] }).ok;
+    res.json({
+      id,
+      date,
+      canRestore: isRoot,
+      punches: sqlPlugin.clockinPunches(id, date, isRoot),
+      audit: isRoot ? sqlPlugin.punchAudit({ id, date }) : [],
+    });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
+});
+
+app.post('/api/clockin/punch/delete', async (req: Request, res: Response) => {
+  await changePunch(req, res, 'delete');
+});
+
+app.post('/api/clockin/punch/restore', async (req: Request, res: Response) => {
+  await changePunch(req, res, 'restore');
+});
+
+const PUNCH_REASON_MAX = 200;
+
+async function changePunch(req: Request, res: Response, action: 'delete' | 'restore'): Promise<void> {
+  try {
+    const body = (req.body && typeof req.body === 'object') ? req.body as { [key: string]: unknown } : {};
+    const account = body['account'];
+    const cookie = body['cookie'];
+    const id = body['id'];
+    const date = body['date'];
+    const numRaw = body['num'];
+    const reasonRaw = body['reason'];
+    if (typeof account !== 'string' || typeof cookie !== 'string' || typeof id !== 'string' || id.length === 0 ||
+      typeof date !== 'string' || !isRealDate(date) ||
+      !((typeof numRaw === 'number' || typeof numRaw === 'string') && /^[1-9]\d{0,5}$/.test(`${numRaw}`))) {
+      res.sendStatus(400);
+      return;
+    }
+    const reason = typeof reasonRaw === 'string' ? reasonRaw.trim() : '';
+    if (!reason) {
+      res.status(400).json({ message: '請填寫原因' });
+      return;
+    }
+    if (reason.length > PUNCH_REASON_MAX) {
+      res.status(400).json({ message: `原因最多 ${PUNCH_REASON_MAX} 字` });
+      return;
+    }
+
+    const ret = sqlPlugin.checkHash(account, cookie);
+    if (ret == null) {
+      res.sendStatus(403);
+      return;
+    }
+    const actor = { id: account, type: ret['accountType'] };
+    // A punch whose account no longer exists is treated like an admin's:
+    // only root may touch it.
+    const owner = sqlPlugin.getUser(id);
+    const target = { id, type: owner ? owner.type : 'admin' };
+    const decision = action === 'delete' ? canDeletePunch(actor, target) : canRestorePunch(actor);
+    if (!decision.ok) {
+      log.logFormat(`${account} was refused to ${action} a clock-in punch of ${id} on ${date}: ${decision.reason}.`);
+      res.sendStatus(decision.status);
+      return;
+    }
+
+    const key = { id, date, num: parseInt(`${numRaw}`, 10) };
+    const who = { id: account, name: ret['name'] || account };
+    const result = action === 'delete'
+      ? sqlPlugin.softDeletePunch(key, who, reason)
+      : sqlPlugin.restorePunch(key, who, reason);
+    if (result === 'missing') {
+      res.status(404).json({ message: action === 'delete' ? '找不到這筆打卡紀錄' : '找不到已刪除的這筆打卡紀錄' });
+      return;
+    }
+    if (result === 'ambiguous') {
+      res.status(409).json({ message: '這筆打卡紀錄有重複資料，請聯絡系統管理員' });
+      return;
+    }
+    log.logFormat(`${who.name} (${account}) ${action === 'delete' ? 'deleted' : 'restored'} clock-in punch #${key.num} of ${id} on ${date}. Reason: ${reason}`);
+
+    // Keep an already generated month sheet (the PDF exports) in step.
+    const yearKey = date.slice(0, 4);
+    const monthKey = date.slice(5, 7);
+    let masterRefreshed = false;
+    if (sqlPlugin.clockinMasterReady(yearKey, monthKey)) {
+      try {
+        await writeClockinMaster(sqlPlugin, yearKey, monthKey);
+        masterRefreshed = true;
+      } catch (e) {
+        log.logFormat(`Failed to refresh clockin master ${yearKey}-${monthKey} after punch ${action}: ${String(e)}`);
+      }
+    }
+    res.status(200).json({ status: action === 'delete' ? 'deleted' : 'restored', masterRefreshed });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    if (!res.headersSent) {
+      res.sendStatus(500);
+    }
+  }
+}
 
 app.get('/api/clockin/master', async (req: Request, res: Response) => {
   try {

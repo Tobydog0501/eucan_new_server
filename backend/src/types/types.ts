@@ -70,7 +70,10 @@ export interface clockinrecord extends table {
   date: string,
   num: number,
   clockin: string | null,
-  clockout: string | null
+  clockout: string | null,
+  deleted_at?: string | null,
+  deleted_by?: string | null,
+  delete_reason?: string | null
 }
 
 export type digit = string | number
