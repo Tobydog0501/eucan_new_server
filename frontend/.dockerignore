@@ -15,3 +15,15 @@ databases/
 proofs/
 calendars/
 clock/
+
+# Build and local-run files: not part of the site.
+Dockerfile
+Dockerfile_*
+.dockerignore
+docker-compose.yaml
+docker-compose*.yml
+run.bat
+.gitignore
+logs/
+# nginx.conf cannot be listed here because the Dockerfiles COPY it into
+# /etc/nginx/conf.d/; they delete the copy that lands in the web root instead.

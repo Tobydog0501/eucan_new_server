@@ -15,7 +15,9 @@ RUN if [ -n "$API_BASE" ]; then \
     fi
 
 # Remove the default nginx.conf
-RUN rm /etc/nginx/conf.d/default.conf
+# nginx.conf is needed in the build context for the COPY below, but must not
+# be served from the web root.
+RUN rm /etc/nginx/conf.d/default.conf /usr/share/nginx/html/nginx.conf
 
 # # Replace with our own nginx.conf
 COPY nginx.conf /etc/nginx/conf.d/
