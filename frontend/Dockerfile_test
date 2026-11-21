@@ -2,7 +2,7 @@
 # still names the production host, so the test UI cannot call it.
 #   docker build [--build-arg API_BASE=http://<test-host>:3000] -f Dockerfile_test .
 # Without API_BASE the pages call port 3000 on the host they were loaded from.
-FROM nginx:1.31.9
+FROM nginx:1.31.9@sha256:84f7876d21d154885f99554d7ae325d8c2213f9169726ea7ab60642f2573a787
 
 ARG API_BASE=
 # "Cloud history" links on the admin pages: a test folder URL, or empty to hide
