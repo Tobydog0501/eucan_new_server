@@ -83,8 +83,34 @@
     margin: 0;
     padding-left: 1.25rem;
     color: var(--eu-text);
-    font-size: var(--eu-fs-sm);
-    line-height: 1.7;
+    font-size: var(--eu-fs-base);
+    line-height: 1.8;
+}
+
+.punch-notes li + li {
+    margin-top: var(--eu-space-1);
+}
+
+/* Desktop: bigger clock and punch buttons in the wider card */
+@media (min-width: 992px) {
+    .punch-clock {
+        font-size: 2rem;
+        margin-bottom: var(--eu-space-5);
+    }
+
+    .punch-actions {
+        gap: var(--eu-space-5);
+        margin-bottom: var(--eu-space-6);
+    }
+
+    .punch-btn-label {
+        padding: var(--eu-space-4);
+        font-size: 1.25rem;
+    }
+
+    .punch-status td {
+        font-size: 1.125rem;
+    }
 }
 
 @media (max-width: 575.98px) {
