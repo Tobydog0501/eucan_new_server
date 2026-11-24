@@ -50,17 +50,21 @@ npm test     # 編譯到 .test-build/ 後跑 node --test
 | makeup_audit table | 新增補登申請的稽核表（送出、核准、駁回：誰、何時、原因） |
 | clockinrecord makeup_request_id column | `clockinrecord` 新增 `makeup_request_id`（預設 NULL＝一般打卡；有值＝由該筆補登申請核准產生） |
 | missed_punch_notice table | 新增未打卡通知的去重表（同一人同一天只寄一次） |
+| clockinrecord half-delete columns | `clockinrecord` 新增 `deleted_clockin`、`deleted_clockout`（單獨刪除的上班／下班時間）；`clockin_punch_audit` 新增 `part`（NULL＝整筆） |
 
 步驟依上表順序執行（1–3 為打卡軟刪除，4–7 為未打卡通知與補登）；之後新增的步驟請接在最後。
 
 ## 刪除誤打的打卡紀錄
 
-管理員（主管）在「打卡紀錄」頁按「打卡明細」，可看到該員工當天的每一筆打卡，按「刪除」並填寫原因後確認。
+管理員（主管）在「打卡紀錄」頁按「補正」，下方「打卡明細」列出該員工當天的每一筆打卡。上班、下班各有自己的「刪除」按鈕，可以分開刪除，填寫原因後確認。
+
+- 刪掉一筆的上班或下班後，員工之後再打卡不會補進被刪的那一格；上下班都被刪掉的那筆就不再出現。
+- 這天若已有補正，打卡紀錄顯示的是補正時間，刪除明細不會改變顯示（視窗裡會提示）。
 
 - 一般員工不能刪除；管理員的打卡只有 root 能刪（與帳號刪除規則相同，見 `backend/src/plugins/account_rules.ts`）。
 - 刪除是軟刪除：資料仍保留，標記刪除時間、刪除者與原因；每次刪除與復原都寫入 `clockin_punch_audit`。
 - 已刪除的打卡不會出現在打卡畫面、員工自己的打卡查詢、月總表與個人 PDF，也不計入年份清單等統計。若該月總表已產生，刪除／復原後會自動重新產生。
-- root 在明細裡看得到已刪除的紀錄與稽核紀錄，並可填寫原因後復原。
+- root 在明細裡看得到已刪除的上班／下班時間與稽核紀錄，並可填寫原因後分別復原。
 
 API：`GET /api/clockin/punches`、`POST /api/clockin/punch/delete`、`POST /api/clockin/punch/restore`，詳見 `backend/conf/API.md`。
 

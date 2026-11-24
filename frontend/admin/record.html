@@ -58,7 +58,7 @@
     </main>
 
     <div class="modal fade" id="clockinEditModal" tabindex="-1" aria-labelledby="clockinEditTitle" aria-hidden="true">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <form id="clockinEditForm">
                     <div class="modal-header">
@@ -78,39 +78,27 @@
                             <label class="form-label" for="clockinEditReason">修改原因</label>
                             <textarea class="form-control" id="clockinEditReason" maxlength="200" rows="3"></textarea>
                         </div>
+                        <hr>
+                        <div class="fw-bold mb-1">打卡明細</div>
+                        <div class="small text-muted mb-2">上班、下班可以分開刪除，刪除後不再計入打卡紀錄。</div>
+                        <div id="punchNotice" class="alert alert-warning small py-2 d-none"></div>
+                        <div id="punchList"></div>
+                        <div id="punchActionBox" class="d-none border rounded p-3 mb-3">
+                            <div class="fw-bold mb-2" id="punchActionTitle"></div>
+                            <label class="form-label" for="punchActionReason" id="punchActionLabel">原因（必填）</label>
+                            <textarea class="form-control mb-2" id="punchActionReason" maxlength="200" rows="2"></textarea>
+                            <div class="d-flex gap-2 justify-content-end">
+                                <button type="button" class="btn btn-secondary btn-sm" id="punchActionCancel">取消</button>
+                                <button type="button" class="btn btn-danger btn-sm" id="punchActionSubmit">確認刪除</button>
+                            </div>
+                        </div>
+                        <div id="punchAudit"></div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
                         <button type="submit" class="btn btn-primary" id="clockinEditSave">儲存</button>
                     </div>
                 </form>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="punchModal" tabindex="-1" aria-labelledby="punchModalTitle" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="punchModalTitle">打卡明細</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="punchList"></div>
-                    <form id="punchActionForm" class="d-none border rounded p-3 mb-3">
-                        <div class="fw-bold mb-2" id="punchActionTitle"></div>
-                        <label class="form-label" for="punchActionReason" id="punchActionLabel">原因（必填）</label>
-                        <textarea class="form-control mb-2" id="punchActionReason" maxlength="200" rows="2" required></textarea>
-                        <div class="d-flex gap-2 justify-content-end">
-                            <button type="button" class="btn btn-secondary btn-sm" id="punchActionCancel">取消</button>
-                            <button type="submit" class="btn btn-danger btn-sm" id="punchActionSubmit">確認刪除</button>
-                        </div>
-                    </form>
-                    <div id="punchAudit"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
-                </div>
             </div>
         </div>
     </div>

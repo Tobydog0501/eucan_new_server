@@ -77,6 +77,8 @@ export interface clockinrecord extends table {
   deleted_at?: string | null,
   deleted_by?: string | null,
   delete_reason?: string | null,
+  deleted_clockin?: string | null,
+  deleted_clockout?: string | null,
   makeup_request_id?: number | null
 }
 

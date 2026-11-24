@@ -310,7 +310,7 @@ Every punch of one employee on one day (admins only). Soft-deleted punches and t
 **Query:** `account`, `cookie`, `id` (employee id), `date` (`YYYY-MM-DD`)
 
 **Response:**
-- **200 OK**: `{ "id", "date", "canRestore": boolean, "punches": [{ "num", "clockin", "clockout", "deleted", "deletedAt", "deletedBy", "deleteReason" }], "audit": [...] }`
+- **200 OK**: `{ "id", "date", "canRestore": boolean, "punches": [{ "num", "clockin", "clockout", "deleted", "deletedAt", "deletedBy", "deleteReason", "deletedClockin", "deletedClockout" }]` (`deletedClockin` / `deletedClockout`: the time of a deleted half, root only; a punch with no half left is listed for root only), "audit": [...] }`
 - **400 Bad Request**: Invalid input data.
 - **403 Forbidden**: No permission.
 
@@ -325,6 +325,8 @@ Every punch of one employee on one day (admins only). Soft-deleted punches and t
 **Description:**  
 Soft-delete one punch (admins; punches of admin or built-in accounts: root only), or restore a deleted one (root only). The row is kept and marked with `deleted_at`, `deleted_by` and `delete_reason`; every delete and restore is written to `clockin_punch_audit`. Deleted punches are left out of every clock-in view, the month sheet and the PDF exports; an already generated month sheet is regenerated.
 
+With `part` set to `clockin` or `clockout` only that half is deleted or restored: its time moves to `deleted_clockin` / `deleted_clockout`, an employee's later punch never refills it, and the audit row records the half in `part`. A punch with no half left drops out of every view.
+
 **Request Body:**
 ```json
 {
@@ -333,16 +335,17 @@ Soft-delete one punch (admins; punches of admin or built-in accounts: root only)
   "id": "string",      // Employee id.
   "date": "string",    // YYYY-MM-DD
   "num": 1,            // Punch number from /api/clockin/punches.
+  "part": "clockin",   // Optional: "clockin" (上班) or "clockout" (下班) only; omitted or "both" = the whole punch.
   "reason": "string"   // Required, at most 200 characters.
 }
 ```
 
 **Response:**
-- **200 OK**: `{ "status": "deleted" | "restored", "masterRefreshed": boolean }`
+- **200 OK**: `{ "status": "deleted" | "restored", "part": "both" | "clockin" | "clockout", "masterRefreshed": boolean }`
 - **400 Bad Request**: Invalid input data or missing reason.
 - **403 Forbidden**: No permission.
 - **404 Not Found**: No such (live / deleted) punch.
-- **409 Conflict**: Duplicate legacy rows share this punch number.
+- **409 Conflict**: Duplicate legacy rows share this punch number, or (restore of a half) the half has a time again.
 
 
 ---

@@ -13,7 +13,7 @@ import { canDeletePunch, canRestorePunch, canReviewMakeup } from './plugins/acco
 import { departmentOf, kindsOverlap, MAKEUP_KIND_LABELS, MAKEUP_REASON_MAX, checkMakeupTime, makeupFromCard, validateMakeupCard } from './plugins/makeup';
 import { missingPunchCards, startMissedPunchSchedule, WORK_END, WORK_START } from './plugins/missed_punch';
 import type { MissingPunchCard } from './plugins/missed_punch';
-import type { MakeupRequestRow, MakeupState } from './plugins/sql';
+import type { MakeupRequestRow, MakeupState, PunchPart } from './plugins/sql';
 import { onDownloadDone } from './plugins/http_util';
 import path from 'path';
 import fs from 'fs';
@@ -593,6 +593,15 @@ async function changePunch(req: Request, res: Response, action: 'delete' | 'rest
     const date = body['date'];
     const numRaw = body['num'];
     const reasonRaw = body['reason'];
+    // Optional: 'clockin' or 'clockout' touches only that half; omitted means the whole punch.
+    const partRaw = body['part'];
+    const part: PunchPart | null = partRaw == null || partRaw === '' || partRaw === 'both'
+      ? 'both'
+      : (partRaw === 'clockin' || partRaw === 'clockout' ? partRaw : null);
+    if (part === null) {
+      res.sendStatus(400);
+      return;
+    }
     if (typeof account !== 'string' || typeof cookie !== 'string' || typeof id !== 'string' || id.length === 0 ||
       typeof date !== 'string' || !isRealDate(date) ||
       !((typeof numRaw === 'number' || typeof numRaw === 'string') && /^[1-9]\d{0,5}$/.test(`${numRaw}`))) {
@@ -629,17 +638,26 @@ async function changePunch(req: Request, res: Response, action: 'delete' | 'rest
     const key = { id, date, num: parseInt(`${numRaw}`, 10) };
     const who = { id: account, name: ret['name'] || account };
     const result = action === 'delete'
-      ? sqlPlugin.softDeletePunch(key, who, reason)
-      : sqlPlugin.restorePunch(key, who, reason);
+      ? sqlPlugin.softDeletePunch(key, who, reason, part)
+      : sqlPlugin.restorePunch(key, who, reason, part);
+    const half = part === 'clockin' ? '上班' : (part === 'clockout' ? '下班' : '');
     if (result === 'missing') {
-      res.status(404).json({ message: action === 'delete' ? '找不到這筆打卡紀錄' : '找不到已刪除的這筆打卡紀錄' });
+      res.status(404).json({
+        message: action === 'delete'
+          ? `找不到這筆${half}打卡紀錄`
+          : `找不到已刪除的這筆${half}打卡紀錄`,
+      });
+      return;
+    }
+    if (result === 'conflict') {
+      res.status(409).json({ message: `這筆打卡之後已有新的${half}時間，無法復原` });
       return;
     }
     if (result === 'ambiguous') {
       res.status(409).json({ message: '這筆打卡紀錄有重複資料，請聯絡系統管理員' });
       return;
     }
-    log.logFormat(`${who.name} (${account}) ${action === 'delete' ? 'deleted' : 'restored'} clock-in punch #${key.num} of ${id} on ${date}. Reason: ${reason}`);
+    log.logFormat(`${who.name} (${account}) ${action === 'delete' ? 'deleted' : 'restored'} clock-in punch #${key.num}${part === 'both' ? '' : ` (${part} only)`} of ${id} on ${date}. Reason: ${reason}`);
 
     // Keep an already generated month sheet (the PDF exports) in step.
     const yearKey = date.slice(0, 4);
@@ -653,7 +671,7 @@ async function changePunch(req: Request, res: Response, action: 'delete' | 'rest
         log.logFormat(`Failed to refresh clockin master ${yearKey}-${monthKey} after punch ${action}: ${String(e)}`);
       }
     }
-    res.status(200).json({ status: action === 'delete' ? 'deleted' : 'restored', masterRefreshed });
+    res.status(200).json({ status: action === 'delete' ? 'deleted' : 'restored', part, masterRefreshed });
   } catch (e) {
     log.logFormat((e as string), new Date());
     if (!res.headersSent) {

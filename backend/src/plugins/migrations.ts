@@ -159,6 +159,26 @@ const STEPS: Step[] = [
       return true;
     },
   },
+  {
+    // 8. Deleting only the 上班 or only the 下班 half of a punch: the half's
+    //    time moves into deleted_clockin / deleted_clockout (so root can put
+    //    it back), and the audit row says which half (NULL = the whole punch).
+    name: "clockinrecord half-delete columns",
+    run: (db) => {
+      let changed = false;
+      for (const column of ["deleted_clockin", "deleted_clockout"]) {
+        if (!hasColumn(db, "clockinrecord", column)) {
+          db.exec(`ALTER TABLE clockinrecord ADD COLUMN ${column} TEXT DEFAULT NULL;`);
+          changed = true;
+        }
+      }
+      if (!hasColumn(db, "clockin_punch_audit", "part")) {
+        db.exec(`ALTER TABLE clockin_punch_audit ADD COLUMN part TEXT DEFAULT NULL;`);
+        changed = true;
+      }
+      return changed;
+    },
+  },
 ];
 
 /** Bring the schema up to date. Runs in one transaction: all steps or none. */
