@@ -10,7 +10,11 @@
     min-height: 100vh;
     min-height: 100dvh;
     margin: 0;
-    background: var(--eu-bg);
+    /* 封面：全螢幕背景圖，上面疊一層淡淡的暗色讓白色卡片更清楚 */
+    background:
+        linear-gradient(rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.25)),
+        url("../img/login.jpg") center / cover no-repeat;
+    background-color: var(--eu-bg);
     border-top: 3px solid var(--eu-brand);
 }
 
@@ -105,7 +109,8 @@
     padding: var(--eu-space-3) var(--eu-space-4) calc(var(--eu-space-3) + env(safe-area-inset-bottom));
     text-align: center;
     font-size: 0.75rem;
-    color: var(--eu-muted);
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 /* 窄螢幕（手機直向）與矮螢幕（手機橫向） */
