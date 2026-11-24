@@ -433,7 +433,7 @@ textarea.form-control {
 	border-color: var(--eu-ink);
 }
 
-.table td > input,
+.table td > input:not([type="checkbox"]):not([type="radio"]),
 .table td > select {
 	width: 100%;
 	min-width: 8rem;
@@ -448,6 +448,69 @@ textarea.form-control {
 
 .table-responsive {
 	border-radius: var(--eu-radius);
+}
+
+/* ---------- Pick grid: a list of people to tick (批次請假) ---------- */
+.eu-pick-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+	gap: var(--eu-space-2);
+}
+
+.eu-pick {
+	display: flex;
+	align-items: center;
+	gap: var(--eu-space-3);
+	margin: 0;
+	padding: var(--eu-space-2) var(--eu-space-3);
+	min-height: var(--eu-control-h);
+	border: 1px solid var(--eu-border);
+	border-radius: var(--eu-radius-sm);
+	background: var(--eu-surface);
+	cursor: pointer;
+	user-select: none;
+	transition: border-color 0.12s, background-color 0.12s;
+}
+
+.eu-pick:hover {
+	border-color: var(--eu-border-strong);
+	background: var(--eu-surface-alt);
+}
+
+.eu-pick:has(:checked) {
+	border-color: var(--eu-ink);
+	background: var(--eu-surface-alt);
+}
+
+.eu-pick .form-check-input {
+	flex: none;
+	margin: 0;
+	border-color: var(--eu-border-strong);
+}
+
+.eu-pick .form-check-input:checked {
+	background-color: var(--eu-ink);
+	border-color: var(--eu-ink);
+}
+
+.eu-pick-id {
+	flex: none;
+	min-width: 2.75rem;
+	color: var(--eu-muted);
+	font-size: var(--eu-fs-sm);
+	font-variant-numeric: tabular-nums;
+}
+
+.eu-pick-name {
+	color: var(--eu-ink);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.eu-pick-empty {
+	grid-column: 1 / -1;
+	text-align: center;
 }
 
 /* ---------- Status helpers ---------- */
