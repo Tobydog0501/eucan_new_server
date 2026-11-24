@@ -1,14 +1,13 @@
 <link id="eucan-navbar-css" rel="stylesheet" href="../css/navbar.css">
-<header>
-  <nav class="navbar navbar-expand-lg navbar-light"
-    style="background: linear-gradient(180deg, #f2f8ff 0%, #eaf3ff 100%)">
+<header class="eu-header">
+  <nav class="navbar navbar-expand-lg navbar-light eu-navbar">
     <div class="container-fluid">
       <!-- Logo -->
       <a class="navbar-brand" href="#">
-        <img src="../img/logo.png" alt="公司 Logo" height="55" />
+        <img src="../img/logo.png" alt="EUCAN 祐肯" class="eu-logo" />
       </a>
 
-      <span id="name" class="user-greeting navbar-greeting fw-bold text-primary d-lg-none ms-auto me-2"></span>
+      <span id="name" class="user-greeting navbar-greeting d-lg-none ms-auto me-2"></span>
 
       <!-- 漢堡選單（小螢幕） -->
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent"
@@ -46,6 +45,7 @@
             <ul class="dropdown-menu" aria-labelledby="navAttendanceDropdown">
               <li><a class="dropdown-item" href="./calendar.html">行事曆</a></li>
               <li><a class="dropdown-item" href="./record.html">打卡紀錄</a></li>
+              <li><a class="dropdown-item" href="./makeup.html">補登審核</a></li>
             </ul>
           </li>
 
@@ -70,9 +70,12 @@
           <li class="nav-item d-lg-none">
             <a class="nav-link" href="./record.html">打卡紀錄</a>
           </li>
+          <li class="nav-item d-lg-none">
+            <a class="nav-link" href="./makeup.html">補登審核</a>
+          </li>
         </ul>
         <div class="navbar-actions">
-          <span class="user-greeting navbar-greeting fw-bold text-primary mb-0 d-none d-lg-inline"></span>
+          <span class="user-greeting navbar-greeting mb-0 d-none d-lg-inline"></span>
           <button type="button" id="logoutBtn" class="navbar-logout-btn">登出</button>
         </div>
       </div>

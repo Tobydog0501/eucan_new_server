@@ -17,10 +17,11 @@ module.exports = function utils(sqlPlugin:sql,log:logger,mailer:mailer,req:Reque
     }
 
     let ret = sqlPlugin.checkHash(account,cookie);
-    if (ret==null){
+    // Lists every employee's tickets: admin pages only.
+    if (ret==null||ret["accountType"]!="admin"){
         res.sendStatus(403);
-        return
+        return;
     }
-    const retu = sqlPlugin.showQuery(account,0);
+    const retu = sqlPlugin.showQuery(0);
     res.send({"data":retu});
 }

@@ -344,3 +344,63 @@ Soft-delete one punch (admins; punches of admin or built-in accounts: root only)
 - **404 Not Found**: No such (live / deleted) punch.
 - **409 Conflict**: Duplicate legacy rows share this punch number.
 
+
+---
+
+### 15. Make-up Punch Requests (補打卡申請) — employee side
+
+**Endpoints:**
+![GET](https://img.shields.io/badge/GET-0052CC?style=flat-square&logo=appveyor&logoColor=white) `/api/makeup/mine`
+![POST](https://img.shields.io/badge/POST-FF4136?style=flat-square&logo=appveyor&logoColor=white) `/api/makeup/apply`
+
+**Description:**  
+`mine` returns the caller's own requests and missing punches only (no parameter selects anybody else). `missing` lists one card per missing half (clock-in or clock-out) on each working day of the last 31 days up to yesterday (Taipei), newest first, using the same detection as the missed-punch notice; pending leave excuses too, and halves with a pending or approved request are left out. `apply` files a pending request for one of those cards; it never creates a punch. Date and half must match a current card (otherwise 409). `time` is the actual time of that half on the card's date, as `HH:MM` (no date, no seconds); it must be earlier than the day's recorded clock-out (for `in`) or later than the recorded clock-in (for `out`), and when that other half is missing too, earlier than 17:30 (`in`) or later than 08:30 (`out`). That time is stored and is what an approval puts on the punch; `clockin` / `clockout` fields in the body are ignored. Name and department come from the account.
+
+**`apply` body:**
+```json
+{
+  "account": "string",
+  "cookie": "string",
+  "date": "YYYY-MM-DD",   // The card's date (before today, Taipei).
+  "kind": "in" | "out",   // The card's half.
+  "time": "HH:MM",        // Required: the actual clock-in / clock-out time on that date.
+  "reason": "string"      // Required, at most 200 characters.
+}
+```
+
+**Response:**
+- `mine` **200 OK**: `{ "applicant": { "name", "department" }, "today", "missing": [{ "date", "kind": "in" | "out", "kindLabel": "上班" | "下班", "time": "08:30" | "17:30", "clockin", "clockout" }], "requests": [{ "requestId", "name", "department", "date", "kind", "kindLabel", "clockin", "clockout", "reason", "appliedAt", "state", "stateLabel", "reviewerName", "reviewedAt", "reviewNote" }] }`
+- `apply` **201 Created**: `{ "status": "pending", "request": {...} }`
+- **400 Bad Request**: `{ "message" }` saying which field is wrong, or that the time does not fit the day's other half.
+- **403 Forbidden**: Not logged in.
+- **409 Conflict**: A pending or approved request already covers the same half of that day, or that date and half is not a missing punch.
+
+---
+
+### 16. Review Make-up Punch Requests — admin side
+
+**Endpoints:**
+![GET](https://img.shields.io/badge/GET-0052CC?style=flat-square&logo=appveyor&logoColor=white) `/api/makeup/requests?state=pending|approved|rejected|all`
+![GET](https://img.shields.io/badge/GET-0052CC?style=flat-square&logo=appveyor&logoColor=white) `/api/makeup/audit?requestId=N`
+![POST](https://img.shields.io/badge/POST-FF4136?style=flat-square&logo=appveyor&logoColor=white) `/api/makeup/review`
+
+**Description:**  
+Admins only. Who may decide follows the punch-deletion rule (`canReviewMakeup` in `account_rules.ts`): requests of admin or built-in accounts only by root, and nobody decides their own. The list carries `account` and `canReview` per row. Approving inserts one punch into `clockinrecord` with `makeup_request_id` set (shown as `makeup: true` in the clock-in views and punch list) and refreshes an already generated month sheet; rejecting inserts nothing. Every submit / approve / reject is written to `makeup_audit`.
+
+**`review` body:**
+```json
+{
+  "account": "string",
+  "cookie": "string",
+  "requestId": 1,
+  "decision": "approve" | "reject",
+  "note": "string"       // Required to reject, optional to approve; at most 200 characters.
+}
+```
+
+**Response:**
+- **200 OK**: `{ "status": "approved" | "rejected", "request": {...}, "masterRefreshed": boolean }`
+- **400 Bad Request**: Invalid input data or missing rejection reason.
+- **403 Forbidden**: No permission.
+- **404 Not Found**: No such request.
+- **409 Conflict**: Already approved or rejected.

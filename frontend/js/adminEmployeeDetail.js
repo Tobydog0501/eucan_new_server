@@ -29,7 +29,7 @@ $(function () {
 
     function loadEmployee() {
         $.ajax({
-            url: `https://eucan.ddns.net:3000/users`,
+            url: `${EUCAN_API_BASE}/users`,
             type: 'POST',
             dataType: 'json',
             headers: {
@@ -56,7 +56,8 @@ $(function () {
 
     function renderEmployee(employee) {
         $("#id").val(employee.id);
-        $("#pwd").val(employee.pwd || "");
+        // The server never sends the stored password; leave the field empty to keep it.
+        $("#pwd").val("");
         $("#employeeName").val(employee.name || "");
         $("#email").val(employee.email || "");
         $("#joinTime").val((employee.joinTime || "").split(" ")[0]);
@@ -112,7 +113,7 @@ $(function () {
         };
 
         $.ajax({
-            url: `https://eucan.ddns.net:3000/modemp`,
+            url: `${EUCAN_API_BASE}/modemp`,
             type: 'POST',
             headers: {
                 'Content-Type': 'application/json',

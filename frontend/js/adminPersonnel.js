@@ -10,7 +10,7 @@ $(function () {
     loginCheck(userId, sessionKey);
 
     $.ajax({
-        url: `https://eucan.ddns.net:3000/users`,
+        url: `${EUCAN_API_BASE}/users`,
         type: 'POST',
         dataType: 'json',
         headers: {
@@ -78,7 +78,6 @@ $(function () {
             pageData.forEach((d) => {
                 const tableRow = $("<tr>").append(
                     $("<td>").html(d.id),
-                    $("<td>").html(d.pwd),
                     $("<td>").html(d.name),
                     $("<td>").html(d.joinTime),
                     $("<td>").html(d.email),

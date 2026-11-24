@@ -6,7 +6,7 @@ $(function() {
 			twoFAc = prompt("請輸入2FA驗證碼");
 		}
 		$.ajax({
-			url: 'https://eucan.ddns.net:3000/login',
+			url: `${EUCAN_API_BASE}/login`,
 			type: 'POST',
 			dataType: 'json',
 			headers: {

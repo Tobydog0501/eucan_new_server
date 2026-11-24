@@ -9,7 +9,12 @@ import { check_working_day, main as generateCalendarExcel } from './plugins/dayo
 import { startArchiveSchedule } from './plugins/archive_schedule';
 import { aggregateDay, ClockEdit, decideEdit, isRealDate, taipeiToday } from './plugins/clockin_sheet';
 import { personalClockinPdf, readMasterClockinPdf, writeClockinMaster } from './plugins/clockin_archive';
-import { canDeletePunch, canRestorePunch } from './plugins/account_rules';
+import { canDeletePunch, canRestorePunch, canReviewMakeup } from './plugins/account_rules';
+import { departmentOf, kindsOverlap, MAKEUP_KIND_LABELS, MAKEUP_REASON_MAX, checkMakeupTime, makeupFromCard, validateMakeupCard } from './plugins/makeup';
+import { missingPunchCards, startMissedPunchSchedule, WORK_END, WORK_START } from './plugins/missed_punch';
+import type { MissingPunchCard } from './plugins/missed_punch';
+import type { MakeupRequestRow, MakeupState } from './plugins/sql';
+import { onDownloadDone } from './plugins/http_util';
 import path from 'path';
 import fs from 'fs';
 
@@ -26,7 +31,7 @@ app.use(bodyParser.urlencoded({
 app.use(bodyParser.json());
 
 app.use(cors({
-  "origin": "https://eucan.ddns.net",
+  "origin": process.env.CORS_ORIGIN || "https://eucan.ddns.net",
   "methods": "GET,POST,OPTIONS",
   "credentials": true,             // MUST be true if sending cookies/sessions
   "optionsSuccessStatus": 204
@@ -107,14 +112,31 @@ posts.forEach(v => {
       res.sendStatus(400);
       return;
     }
-    try {
-      utils(req, res);
-    } catch (e) {
-      log.logFormat((e as string), new Date());
-      res.sendStatus(500);
-    }
+    // Handlers may be sync or async; route both thrown errors and rejected
+    // promises to a 500 instead of letting a rejection take the process down.
+    Promise.resolve()
+      .then(() => utils(req, res))
+      .catch((e: unknown) => {
+        log.logFormat(`POST /${v} failed: ${errorText(e)}`, new Date());
+        if (!res.headersSent) {
+          res.sendStatus(500);
+        }
+      });
   });
 })
+
+// Last line of defence: log stray rejections (e.g. a fire-and-forget mail send)
+// rather than crashing every user's session.
+process.on('unhandledRejection', (reason: unknown) => {
+  log.logFormat(`Unhandled promise rejection: ${errorText(reason)}`, new Date());
+});
+
+function errorText(e: unknown): string {
+  if (e instanceof Error) {
+    return e.stack || e.message;
+  }
+  return String(e);
+}
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}/`);
@@ -124,6 +146,7 @@ app.listen(PORT, () => {
     console.error("Mailer Verify Failed!");
   }
   startArchiveSchedule(sqlPlugin, log);
+  startMissedPunchSchedule(sqlPlugin, log, mailers);
 });
 
 // Public view endpoint: return calendar JSON (weeks grid)
@@ -264,6 +287,7 @@ app.get('/api/clockin/view', async (req: Request, res: Response) => {
         onLeave: onLeaveIds.has(user.id),
         downloadable: downloadableIds.has(user.id),
         modified: live.modified,
+        makeup: live.makeup,
         reason: live.reason,
         editorName: live.editorName,
         editedAt: live.editedAt,
@@ -324,6 +348,7 @@ app.get('/api/clockin/day', async (req: Request, res: Response) => {
         clockout: live.clockout,
         hasRecord: live.hasRecord,
         modified: live.modified,
+        makeup: live.makeup,
         reason: live.reason,
         editorName: live.editorName,
         editedAt: live.editedAt,
@@ -416,6 +441,7 @@ app.get('/api/clockin/employee', async (req: Request, res: Response) => {
         clockout: live.clockout,
         hasRecord: live.hasRecord,
         modified: live.modified,
+        makeup: live.makeup,
         reason: live.reason,
         editorName: live.editorName,
         editedAt: live.editedAt,
@@ -636,6 +662,258 @@ async function changePunch(req: Request, res: Response, action: 'delete' | 'rest
   }
 }
 
+// ---- Make-up punch requests (employee page 補打卡申請, admin page 補登審核) ----
+
+const MAKEUP_STATE_LABELS: Record<MakeupState, string> = { pending: '待審', approved: '核准', rejected: '駁回' };
+
+function makeupView(row: MakeupRequestRow) {
+  return {
+    requestId: row.request_id,
+    name: row.name,
+    department: row.department,
+    date: row.missed_date,
+    kind: row.kind,
+    kindLabel: MAKEUP_KIND_LABELS[row.kind],
+    clockin: row.clockin,
+    clockout: row.clockout,
+    reason: row.reason,
+    appliedAt: row.applied_at,
+    state: row.state,
+    stateLabel: MAKEUP_STATE_LABELS[row.state],
+    reviewerName: row.reviewer_name,
+    reviewedAt: row.reviewed_at,
+    reviewNote: row.review_note,
+  };
+}
+
+const MISSING_KIND_LABELS: Record<'in' | 'out', string> = { in: '上班', out: '下班' };
+
+function missingCardView(card: MissingPunchCard) {
+  return {
+    date: card.date,
+    kind: card.kind,
+    kindLabel: MISSING_KIND_LABELS[card.kind],
+    // The shift time of the missing half, as the default for the time input.
+    time: card.kind === 'in' ? WORK_START : WORK_END,
+    // The day's other half, if recorded (the entered time must fit around it).
+    clockin: card.clockin,
+    clockout: card.clockout,
+  };
+}
+
+// The caller's own requests and missing punches. Only ever the caller's: no
+// parameter selects another person.
+app.get('/api/makeup/mine', async (req: Request, res: Response) => {
+  try {
+    const account = String(req.query.account || '');
+    const cookie = String(req.query.cookie || '');
+    if (!account || !cookie) {
+      res.sendStatus(400);
+      return;
+    }
+    const ret = sqlPlugin.checkHash(account, cookie);
+    const user = ret == null ? null : sqlPlugin.getUser(account);
+    if (ret == null || !user || user.id === 'monitor') {
+      res.sendStatus(403);
+      return;
+    }
+    const today = taipeiToday();
+    const missing = await missingPunchCards(sqlPlugin, user.id, { today });
+    res.json({
+      applicant: { name: user.name, department: departmentOf(user.mgroup) },
+      today,
+      missing: missing.map(missingCardView),
+      requests: sqlPlugin.makeupRequestsOf(account).map(makeupView),
+    });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
+});
+
+app.post('/api/makeup/apply', async (req: Request, res: Response) => {
+  try {
+    const body = (req.body && typeof req.body === 'object') ? req.body as { [key: string]: unknown } : {};
+    const account = body['account'];
+    const cookie = body['cookie'];
+    if (typeof account !== 'string' || typeof cookie !== 'string' || !account || !cookie) {
+      res.sendStatus(400);
+      return;
+    }
+    const ret = sqlPlugin.checkHash(account, cookie);
+    const user = ret == null ? null : sqlPlugin.getUser(account);
+    if (ret == null || !user || user.id === 'monitor') {
+      res.sendStatus(403);
+      return;
+    }
+    const today = taipeiToday();
+    const checked = validateMakeupCard(body, today);
+    if (!checked.ok) {
+      res.status(400).json({ message: checked.message });
+      return;
+    }
+    // Only a card the page shows may be filed: date and half must be a missing punch of the caller.
+    const card = checked.value;
+    const missing = await missingPunchCards(sqlPlugin, user.id, { today });
+    const match = missing.find((m) => m.date === card.date && m.kind === card.kind);
+    if (!match) {
+      const filed = sqlPlugin.activeMakeupKindsOn(user.id, card.date).some((kind) => kindsOverlap(kind, card.kind));
+      res.status(409).json({ message: filed ? '這一天已有待審或已核准的同類補打卡申請' : '這一天沒有需要補打卡的紀錄' });
+      return;
+    }
+    const plausible = checkMakeupTime(card, match, { start: WORK_START, end: WORK_END });
+    if (!plausible.ok) {
+      res.status(400).json({ message: plausible.message });
+      return;
+    }
+    const input = makeupFromCard(card);
+    const result = sqlPlugin.createMakeupRequest({ id: user.id, name: user.name, department: departmentOf(user.mgroup) }, input);
+    if (result === 'duplicate') {
+      res.status(409).json({ message: '這一天已有待審或已核准的同類補打卡申請' });
+      return;
+    }
+    log.logFormat(`${account} filed make-up request #${result} for ${input.date} (${input.kind} ${card.time}).`);
+    res.status(201).json({ status: 'pending', request: makeupView(sqlPlugin.getMakeupRequest(result) as MakeupRequestRow) });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    if (!res.headersSent) res.sendStatus(500);
+  }
+});
+
+// Admin list. `canReview` tells the page whether this admin may decide.
+app.get('/api/makeup/requests', (req: Request, res: Response) => {
+  try {
+    const account = String(req.query.account || '');
+    const cookie = String(req.query.cookie || '');
+    const stateRaw = String(req.query.state || 'pending');
+    if (!account || !cookie || !['pending', 'approved', 'rejected', 'all'].includes(stateRaw)) {
+      res.sendStatus(400);
+      return;
+    }
+    const ret = sqlPlugin.checkHash(account, cookie);
+    if (ret == null || ret['accountType'] !== 'admin') {
+      res.sendStatus(403);
+      return;
+    }
+    const actor = { id: account, type: ret['accountType'] };
+    const rows = sqlPlugin.makeupRequests(stateRaw === 'all' ? undefined : stateRaw as MakeupState);
+    res.json({
+      requests: rows.map((row) => {
+        const owner = sqlPlugin.getUser(row.id);
+        const applicant = { id: row.id, type: owner ? owner.type : 'admin' };
+        return { ...makeupView(row), account: row.id, canReview: row.state === 'pending' && canReviewMakeup(actor, applicant).ok };
+      }),
+    });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
+});
+
+app.get('/api/makeup/audit', (req: Request, res: Response) => {
+  try {
+    const account = String(req.query.account || '');
+    const cookie = String(req.query.cookie || '');
+    const requestId = String(req.query.requestId || '');
+    if (!account || !cookie || !/^[1-9]\d{0,9}$/.test(requestId)) {
+      res.sendStatus(400);
+      return;
+    }
+    const ret = sqlPlugin.checkHash(account, cookie);
+    if (ret == null || ret['accountType'] !== 'admin') {
+      res.sendStatus(403);
+      return;
+    }
+    res.json({ audit: sqlPlugin.makeupAudit(parseInt(requestId, 10)) });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
+});
+
+app.post('/api/makeup/review', async (req: Request, res: Response) => {
+  try {
+    const body = (req.body && typeof req.body === 'object') ? req.body as { [key: string]: unknown } : {};
+    const account = body['account'];
+    const cookie = body['cookie'];
+    const idRaw = body['requestId'];
+    const decision = body['decision'];
+    if (typeof account !== 'string' || typeof cookie !== 'string' || !account || !cookie ||
+      !((typeof idRaw === 'number' || typeof idRaw === 'string') && /^[1-9]\d{0,9}$/.test(`${idRaw}`)) ||
+      (decision !== 'approve' && decision !== 'reject')) {
+      res.sendStatus(400);
+      return;
+    }
+    const note = typeof body['note'] === 'string' ? body['note'].trim() : '';
+    if (decision === 'reject' && !note) {
+      res.status(400).json({ message: '駁回請填寫原因' });
+      return;
+    }
+    if (note.length > MAKEUP_REASON_MAX) {
+      res.status(400).json({ message: `原因最多 ${MAKEUP_REASON_MAX} 字` });
+      return;
+    }
+
+    const ret = sqlPlugin.checkHash(account, cookie);
+    if (ret == null) {
+      res.sendStatus(403);
+      return;
+    }
+    const requestId = parseInt(`${idRaw}`, 10);
+    const actor = { id: account, type: ret['accountType'] };
+    if (actor.type !== 'admin') {
+      log.logFormat(`${account} was refused to review make-up request #${requestId}: not an admin.`);
+      res.sendStatus(403);
+      return;
+    }
+    const request = sqlPlugin.getMakeupRequest(requestId);
+    if (!request) {
+      res.status(404).json({ message: '找不到這筆補打卡申請' });
+      return;
+    }
+    // An applicant whose account no longer exists is treated like an admin:
+    // only root may decide (same rule as punch deletion).
+    const owner = sqlPlugin.getUser(request.id);
+    const allowed = canReviewMakeup(actor, { id: request.id, type: owner ? owner.type : 'admin' });
+    if (!allowed.ok) {
+      log.logFormat(`${account} was refused to review make-up request #${requestId}: ${allowed.reason}.`);
+      res.sendStatus(allowed.status);
+      return;
+    }
+
+    const who = { id: account, name: ret['name'] || account };
+    const result = sqlPlugin.reviewMakeupRequest(requestId, decision, who, note);
+    if (result.result === 'missing') {
+      res.status(404).json({ message: '找不到這筆補打卡申請' });
+      return;
+    }
+    if (result.result === 'not-pending') {
+      res.status(409).json({ message: `這筆申請已${MAKEUP_STATE_LABELS[result.state]}` });
+      return;
+    }
+    log.logFormat(`${who.name} (${account}) ${decision === 'approve' ? 'approved' : 'rejected'} make-up request #${requestId} of ${request.id} for ${request.missed_date}.`);
+
+    // An approval adds a punch: keep an already generated month sheet in step.
+    let masterRefreshed = false;
+    if (decision === 'approve') {
+      const yearKey = request.missed_date.slice(0, 4);
+      const monthKey = request.missed_date.slice(5, 7);
+      if (sqlPlugin.clockinMasterReady(yearKey, monthKey)) {
+        try {
+          await writeClockinMaster(sqlPlugin, yearKey, monthKey);
+          masterRefreshed = true;
+        } catch (e) {
+          log.logFormat(`Failed to refresh clockin master ${yearKey}-${monthKey} after make-up approval: ${String(e)}`);
+        }
+      }
+    }
+    res.status(200).json({ status: result.request.state, request: makeupView(result.request), masterRefreshed });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    if (!res.headersSent) res.sendStatus(500);
+  }
+});
+
 app.get('/api/clockin/master', async (req: Request, res: Response) => {
   try {
     const account = String(req.query.account || '');
@@ -726,12 +1004,7 @@ app.get('/api/calendar/export', async (req: Request, res: Response) => {
 
     await generateCalendarExcel(year, month, sqlPlugin);
     const filePath = `/app/calendars/${year}-${month}calendar.xlsx`;
-    res.download(filePath, `${year}-${month}calendar.xlsx`, (err) => {
-      if (err) {
-        log.logFormat(`Failed to send calendar file: ${String(err)}`);
-        res.sendStatus(500);
-      }
-    });
+    res.download(filePath, `${year}-${month}calendar.xlsx`, onDownloadDone(res, log, 'calendar file'));
   } catch (e) {
     log.logFormat((e as string), new Date());
     res.sendStatus(500);
@@ -795,7 +1068,7 @@ function indexEdits(edits: ClockEdit[]): Map<string, ClockEdit> {
 }
 
 function summarizeClockinDay(
-  punches: Array<{ id: string; name: string; date: string; num: number; clockin: string | null; clockout: string | null }>,
+  punches: Array<{ id: string; name: string; date: string; num: number; clockin: string | null; clockout: string | null; makeup_request_id?: number | null }>,
   edit: ClockEdit | null,
   fallbackName: string
 ): {
@@ -803,6 +1076,7 @@ function summarizeClockinDay(
   clockout: string | null;
   hasRecord: boolean;
   modified: boolean;
+  makeup: boolean;
   reason: string;
   editorName: string | null;
   editedAt: string | null;
@@ -813,6 +1087,9 @@ function summarizeClockinDay(
     clockout: row ? row.clockout : null,
     hasRecord: punches.length > 0 || edit !== null,
     modified: row ? row.modified : false,
+    // The day's times include a punch from an approved make-up request (an
+    // admin correction, when there is one, takes precedence over punches).
+    makeup: edit === null && punches.some((p) => p.makeup_request_id != null),
     reason: row ? row.reason : '',
     editorName: row ? row.editorName : null,
     editedAt: row ? row.editedAt : null,

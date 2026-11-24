@@ -1,89 +1,76 @@
-/* 全局設定 */
-* {
+/* =========================================================================
+   登入頁：沿用 theme.css 的色彩與元件，置中白色卡片。
+   延續 #40 的行動版修正：版面留在一般排版流（不用 position: fixed），
+   內容比畫面高或 iOS 鍵盤彈出時可以捲動；輸入框字級 16px 避免 iOS 自動放大。
+   ========================================================================= */
+
+.login-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    min-height: 100dvh;
+    margin: 0;
+    background: var(--eu-bg);
+    border-top: 3px solid var(--eu-brand);
+}
+
+.login-main {
+    flex: 1 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--eu-space-6) var(--eu-space-4);
+}
+
+.login-card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--eu-surface);
+    border: 1px solid var(--eu-border);
+    border-radius: var(--eu-radius);
+    box-shadow: var(--eu-shadow-lg);
+    padding: var(--eu-space-6) var(--eu-space-5);
     text-align: center;
-    box-sizing: border-box;
 }
 
-body, html {
-    margin: 0;
-    padding: 0;
-    height: 100%;
+.login-logo {
+    display: block;
+    height: 44px;
+    width: auto;
+    margin: 0 auto var(--eu-space-4);
 }
 
-/* 全螢幕背景 */
-.fullscreen {
-    margin: 0;
-    background: url("../img/login.jpg") center/cover no-repeat;
-    position: fixed;
-    opacity: 0.85;
-    height: 100%;
-    width: 100%;
+.login-title {
+    margin: 0 0 var(--eu-space-5);
+    font-size: 1.375rem;
+    font-weight: 700;
+    line-height: 1.4;
+    color: var(--eu-ink);
 }
 
-/* 主要內容區塊 */
-.field {
-    margin: 150px 0;
-}
-
-/* 標題樣式 */
-h1 {
-    margin-bottom: 50px;
-    font-size: 50px;
-    color: white;
-    text-shadow: 0.1em 0.1em 0.2em black;
-}
-
-/* 登入欄位同一寬、左對齊 */
 .login-stack {
-    width: 220px;
-    margin-left: auto;
-    margin-right: auto;
-}
-
-.login-stack input,
-.login-stack #login {
-    width: 100%;
-}
-
-.login-stack input {
     text-align: left;
 }
 
-/* 輸入框樣式 */
-input {
-    margin-bottom: 20px;
-    width: 200px;
-    height: 30px;
-    font-size: 15px;
-    border: 3px solid orange;
-    border-radius: 5px;
-    padding: 5px;
-}
-
-/* 按鈕樣式 */
-button {
-    width: 220px;
-    height: 50px;
-    font-size: 20px;
-    border: none;
-    outline: none;
-    cursor: pointer;
-    border-radius: 10px;
-}
-
-/* 輸入框外部容器 */
 .inputs {
-    margin: 15px 0;
+    margin-bottom: var(--eu-space-4);
+}
+
+.inputs:last-child {
+    margin-bottom: 0;
+    margin-top: var(--eu-space-5);
+}
+
+.login-stack .form-control {
+    min-height: 44px;
 }
 
 .password-field {
     position: relative;
-    width: 100%;
 }
 
-.password-field input {
-    margin-bottom: 0;
-    padding-right: 3.25rem;
+.password-field .form-control {
+    padding-right: 4rem;
 }
 
 .pw-toggle {
@@ -91,87 +78,68 @@ button {
     right: 6px;
     top: 50%;
     transform: translateY(-50%);
-    width: auto;
-    height: 22px;
-    font-size: 13px;
-    padding: 0 6px;
+    height: 30px;
+    padding: 0 0.6rem;
+    font-size: var(--eu-fs-sm);
+    font-weight: 600;
+    color: var(--eu-brand-dark);
     background: transparent;
-    color: #c45c00;
     border: none;
-    border-radius: 4px;
-    text-shadow: none;
+    border-radius: var(--eu-radius-sm);
 }
 
-/* 文字顏色 */
-p {
-    color: white;
+.pw-toggle:hover,
+.pw-toggle:focus-visible {
+    background: var(--eu-brand-soft);
+    outline: none;
 }
 
-/* 按鈕炫光效果 */
-.glow-on-hover {
-    background: #111;
-    color: #fff;
-    position: relative;
-    z-index: 0;
-    overflow: hidden;
-    transition: background 0.3s ease-in-out;
-}
-
-.glow-on-hover:before {
-    content: '';
-    position: absolute;
-    top: -2px;
-    left: -2px;
-    width: calc(100% + 4px);
-    height: calc(100% + 4px);
-    background: linear-gradient(45deg, 
-        #ff0000, #ff7300, #fffb00, 
-        #48ff00, #00ffd5, #002bff, 
-        #7a00ff, #ff00c8, #ff0000);
-    background-size: 400%;
-    filter: blur(5px);
-    z-index: -1;
-    opacity: 0;
-    transition: opacity 0.3s ease-in-out;
-    border-radius: 10px;
-    animation: glowing 20s linear infinite;
-}
-
-.glow-on-hover:hover:before {
-    opacity: 1;
-}
-
-.glow-on-hover:after {
-    content: '';
-    position: absolute;
+.login-submit {
     width: 100%;
-    height: 100%;
-    background: #111;
-    left: 0;
-    top: 0;
-    border-radius: 10px;
-    z-index: -1;
+    min-height: 46px;
+    --bs-btn-font-size: 1rem;
 }
 
-.glow-on-hover:active {
-    color: #000;
-}
-
-/* 版本資訊區塊 */
 .version-info {
-    position: fixed;
-    bottom: 10px;
-    right: 10px;
-    background-color: rgba(0, 0, 0, 0.7);
-    color: white;
-    padding: 5px 10px;
-    border-radius: 5px;
-    font-size: 12px;
-    text-align: right;
+    flex: 0 0 auto;
+    padding: var(--eu-space-3) var(--eu-space-4) calc(var(--eu-space-3) + env(safe-area-inset-bottom));
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--eu-muted);
 }
 
-/* 炫光動畫 */
-@keyframes glowing {
-    0%, 100% { background-position: 0 0; }
-    50% { background-position: 400% 0; }
+/* 窄螢幕（手機直向）與矮螢幕（手機橫向） */
+@media (max-width: 600px), (max-height: 500px) {
+    .login-main {
+        align-items: flex-start;
+        padding: var(--eu-space-6) var(--eu-space-4) var(--eu-space-4);
+    }
+
+    .login-card {
+        padding: var(--eu-space-5) var(--eu-space-4);
+    }
+}
+
+@media (max-height: 500px) {
+    .login-main {
+        padding-top: var(--eu-space-3);
+    }
+
+    .login-logo {
+        height: 32px;
+        margin-bottom: var(--eu-space-2);
+    }
+
+    .login-title {
+        font-size: 1.125rem;
+        margin-bottom: var(--eu-space-3);
+    }
+
+    .inputs {
+        margin-bottom: var(--eu-space-2);
+    }
+
+    .inputs:last-child {
+        margin-top: var(--eu-space-3);
+    }
 }

@@ -1,0 +1,49 @@
+# Test site: no nginx/ACME, no mail, no 2FA call-out, no data.gov.tw scraping.
+#   TEST_HOST=localhost docker compose -p eucan-test -f docker-compose-test.yml up -d --build
+# Put a sanitized database at ./testenv/databases/loginDatabase.db and the
+# working-day calendars at ./testenv/api/office_calendar_<rocYear>.json first.
+# Never point these volumes at ./backend/* (production data).
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile_test
+      args:
+        # Empty: pages call port 3000 on the host they were served from.
+        API_BASE: "${TEST_API_BASE:-}"
+        # Test cloud-history folders; empty hides the links.
+        CLOUD_HISTORY_URL_CALENDAR: "${TEST_CLOUD_HISTORY_URL_CALENDAR:-}"
+        CLOUD_HISTORY_URL_RECORD: "${TEST_CLOUD_HISTORY_URL_RECORD:-}"
+    ports:
+      - "8000:8000"
+    volumes:
+      - "./testenv/frontend-logs:/var/log/nginx"
+      # Static site plus a same-origin proxy to the backend (see the file).
+      - "./frontend/nginx.test.conf:/etc/nginx/conf.d/nginx.conf:ro"
+    depends_on:
+      - backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      CORS_ORIGIN: "http://${TEST_HOST:-localhost}:8000"
+      MAIL_DISABLED: "1"
+      SMTP_SERVER: "127.0.0.1"
+      SMTP_PORT: "1"
+      USER_MAIL: "noreply@example.invalid"
+      LEAVE_MANAGER_MAILS: "manager0@example.invalid,manager1@example.invalid"
+      USER_PWD: "test-not-a-password"
+      TOTP_VALIDATE_URL: "http://127.0.0.1:1/disabled"
+      SECRET: "test-not-a-secret"
+      CALENDAR_DOWNLOAD_DISABLED: "1"
+    volumes:
+      - "./testenv/databases:/app/databases/"
+      - "./testenv/proofs:/app/proofs/"
+      - "./testenv/logs:/app/logs"
+      - "./testenv/api:/app/api"
+      - "./testenv/calendars:/app/calendars"
+      - "./testenv/clock:/app/clock"

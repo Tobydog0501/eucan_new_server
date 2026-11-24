@@ -48,7 +48,7 @@ function taipeiDateKey(now: Date): string {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function msUntilNextTaipeiMidnight(now: Date): number {
+export function msUntilNextTaipeiMidnight(now: Date): number {
   const p = taipeiParts(now);
   const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
   const offset = asUtc - now.getTime();

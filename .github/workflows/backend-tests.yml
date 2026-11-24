@@ -1,0 +1,43 @@
+name: Backend tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          # Same Node as the backend image (backend/Dockerfile).
+          node-version: 20.20.2
+
+      # Exactly the versions in the committed package-lock.json.
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run tests
+        run: |
+          if [ "$(npm pkg get scripts.test)" = "{}" ]; then
+            echo "::warning::backend/package.json has no test script; nothing to run."
+            exit 0
+          fi
+          npm test

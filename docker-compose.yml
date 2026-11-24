@@ -9,7 +9,6 @@ services:
       - "443:443"
       - "3000:3000"
       - "8000:8000"
-      - "443:443/udp"
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d
       - ./nginx/var/www/html:/var/www/html
@@ -41,6 +40,8 @@ services:
       dockerfile: Dockerfile
     restart: always
     volumes:
+      # .env is no longer baked into the image (backend/.dockerignore); mount it read-only.
+      - "./backend/.env:/app/.env:ro"
       - "./backend/databases:/app/databases/"
       - "./backend/proofs:/app/proofs/"
       - "./backend/logs:/app/logs"

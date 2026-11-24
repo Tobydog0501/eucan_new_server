@@ -166,6 +166,10 @@ async function rewriteJSON(rocYear:digit) :Promise<void>{
 }
 
 export async function downloadJSON(rocYearArg:digit) :Promise<void>{
+  // Test sites: never reach data.gov.tw; put api/office_calendar_<rocYear>.json in place instead.
+  if (process.env.CALENDAR_DOWNLOAD_DISABLED === "1") {
+    throw new Error(`CALENDAR_DOWNLOAD_DISABLED=1: missing ./api/office_calendar_${rocYearArg}.json`);
+  }
   await scrapeAndDownload(rocYearArg);
   await rewriteJSON(rocYearArg);
   return new Promise(res=>res());

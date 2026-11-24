@@ -4,3 +4,24 @@ server
 conf
 .gitignore
 run.bat
+
+# Secrets and runtime data never go into the image. Production supplies .env
+# through a read-only bind mount (docker-compose.yml); the data directories are
+# volumes.
+.env
+.env.*
+**/.env
+**/.env.*
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+databases/
+proofs/
+calendars/
+clock/
+logs/
+api/
+temp/
+build/
+.test-build/

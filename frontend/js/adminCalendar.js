@@ -10,7 +10,7 @@ $(function () {
 
     $("#navbar-container").load("../admin/navbar.html");
 
-    const apiBase = `${window.location.protocol}//${window.location.hostname}:3000`;
+    const apiBase = EUCAN_API_BASE;
     const weekLabels = ["日", "一", "二", "三", "四", "五", "六"];
 
     async function fetchAvailableYears() {

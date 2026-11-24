@@ -4,16 +4,18 @@ import { mailer } from "../plugins/mailer";
 import logger from "../plugins/logger";
 import { sql } from "../plugins/sql";
 import { digit } from "../types/types";
+import { canEdit } from "../plugins/account_rules";
 
 
-module.exports = function utils(sqlPlugin: sql, log: logger, mailer: mailer, req: Request, res: Response): void {
+module.exports = async function utils(sqlPlugin: sql, log: logger, mailer: mailer, req: Request, res: Response): Promise<void> {
   // modify employee information
   const dataReceived: { [key: string]: any } = req.body;
 
   const account = dataReceived["account"] as string;
   const cookie = dataReceived["cookie"] as string;
   const user = dataReceived["user"] as string;
-  const pwd = dataReceived["pwd"] as string;
+  // Optional: missing, null or "" keeps the current password.
+  const pwd = dataReceived["pwd"] as string | null | undefined;
   const email = dataReceived["email"] as string;
   const name = dataReceived["name"] as string;
   const joinTime = dataReceived["date"] as string;
@@ -23,7 +25,26 @@ module.exports = function utils(sqlPlugin: sql, log: logger, mailer: mailer, req
   const status = dataReceived["status"] as digit;
   let leaveDate = dataReceived["leaveDate"] as string | null;
 
-  if (!valid(dataReceived, ["account", "cookie", "user", "pwd", "email", "name", "date", "type", "mgroup", "permit", "status"])) {
+  if (!valid(dataReceived, ["account", "cookie", "user", "email", "name", "date", "type", "mgroup", "permit", "status"])) {
+    res.sendStatus(400);
+    return;
+  }
+
+  if (pwd != null && typeof pwd !== "string") {
+    res.sendStatus(400);
+    return;
+  }
+  const textFields = [account, cookie, user, email, name, joinTime, type];
+  const requiredText = [account, cookie, user, name, joinTime, type];
+  if (textFields.some((v) => typeof v !== "string") || requiredText.some((v) => v.length === 0)) {
+    res.sendStatus(400);
+    return;
+  }
+  if ([status, mgroup, permit].some((v) => typeof v !== "string" && typeof v !== "number")) {
+    res.sendStatus(400);
+    return;
+  }
+  if (leaveDate != null && typeof leaveDate !== "string") {
     res.sendStatus(400);
     return;
   }
@@ -31,6 +52,18 @@ module.exports = function utils(sqlPlugin: sql, log: logger, mailer: mailer, req
   let ret = sqlPlugin.checkHash(account, cookie);
   if (ret == null || ret["accountType"] != "admin") {
     res.sendStatus(403);
+    return;
+  }
+
+  const target = sqlPlugin.getUser(user);
+  if (target == null) {
+    res.sendStatus(404);
+    return;
+  }
+  const decision = canEdit(account, { id: target.id, type: target.type }, { type, status: `${status}` });
+  if (!decision.ok) {
+    log.logFormat(`${account} was refused editing account ${user}: ${decision.reason}.`);
+    res.sendStatus(decision.status);
     return;
   }
 
@@ -68,7 +101,7 @@ module.exports = function utils(sqlPlugin: sql, log: logger, mailer: mailer, req
     leaveDate = null;
   }
 
-  sqlPlugin.modifyEmployeeInfo(user, pwd, type, email, name, joinTime, mgroup, permit, status, leaveDate);
+  await sqlPlugin.modifyEmployeeInfo(user, pwd ?? null, type, email, name, joinTime, mgroup, permit, status, leaveDate);
   sqlPlugin.resyncEmployeeDayoff(user);
 
   res.sendStatus(200);

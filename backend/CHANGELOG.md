@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - Admins can soft-delete a mistaken clock-in punch (reason required, audited); root can see and restore deleted punches.
 - Idempotent schema migrations, run at start-up or with `npm run migrate`.
+- Daily missed-punch notice (00:00 Asia/Taipei, previous day); written to a local outbox unless `MISSED_PUNCH_MAIL_ENABLED` is on (`MAIL_TEST_MODE=1` or `MAIL_DISABLED=1` keeps it in the outbox).
+- Make-up punch (補登) requests: employees apply, admins approve or reject (audited); approval adds a punch flagged as make-up.
+
+### Changed
+- 補打卡申請 cards ask for the actual clock-in / clock-out time (required, `HH:MM`, checked against the day's other half or the shift bounds); the request stores it and approval puts it on the punch instead of the shift time. The review pages label the columns 實際上班 / 實際下班. The notice mail now says 補打卡申請 / 補打卡作業 instead of 補登申請 / 補登作業.
+- Employee page renamed 補打卡申請. It lists the employee's missing punches (same detection as the notice mail; pending leave also excuses) as cards; the employee only types the reason, date and half come from the card and the time is the shift time. `apply` accepts only a current card.
 
 ## [1.6.2] 2025-11-17
 

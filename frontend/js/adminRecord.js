@@ -10,7 +10,7 @@ $(function () {
 
     $("#navbar-container").load("../admin/navbar.html");
 
-    const apiBase = `${window.location.protocol}//${window.location.hostname}:3000`;
+    const apiBase = EUCAN_API_BASE;
     const editModal = new bootstrap.Modal(document.getElementById("clockinEditModal"));
     const punchModal = new bootstrap.Modal(document.getElementById("punchModal"));
     let viewToken = 0;
@@ -213,6 +213,7 @@ $(function () {
                     <div class="${clockoutRow}"><span>下班</span><span>${displayValue(record.clockout)}</span></div>
                     <div class="record-card-row"><span>修改紀錄</span><span>${modified ? "是" : "否"}</span></div>
                     ${modifiedRows}
+                    ${record.makeup === true ? '<div class="record-card-row"><span>補登</span><span>是（已核准）</span></div>' : ""}
                     <div class="record-card-actions">
                         ${editButton(record.id, record.name, targetDate, record.clockin, record.clockout)}
                         ${punchButton(record.id, record.name, targetDate)}
@@ -246,7 +247,7 @@ $(function () {
                 <tr>
                     <td>${escapeHtml(date)}</td>
                     <td>${displayValue(day.clockin)}</td>
-                    <td>${displayValue(day.clockout)}</td>
+                    <td>${displayValue(day.clockout)}${day.makeup === true ? ' <span class="badge bg-info text-dark">補登</span>' : ""}</td>
                     <td>${modified ? "是" : "否"}</td>
                     <td class="record-cell-reason">${modified ? displayValue(day.reason) : ""}</td>
                     <td>${modified ? displayValue(day.editorName) : ""}</td>
@@ -549,7 +550,7 @@ $(function () {
                 const deleted = punch.deleted === true;
                 const status = deleted
                     ? `已刪除<br><small>${displayValue(punch.deletedBy)}／${displayValue(punch.deletedAt)}<br>原因：${displayValue(punch.deleteReason)}</small>`
-                    : "有效";
+                    : (punch.makeup === true ? "有效（補登）" : "有效");
                 const button = deleted
                     ? (canRestore ? `<button type="button" class="btn btn-sm btn-outline-success punch-restore-btn" data-num="${attr(punch.num)}" data-clockin="${attr(punch.clockin)}" data-clockout="${attr(punch.clockout)}">復原</button>` : "")
                     : `<button type="button" class="btn btn-sm btn-outline-danger punch-delete-btn" data-num="${attr(punch.num)}" data-clockin="${attr(punch.clockin)}" data-clockout="${attr(punch.clockout)}">刪除</button>`;

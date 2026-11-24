@@ -76,6 +76,89 @@ const STEPS: Step[] = [
       return true;
     },
   },
+  // Steps 1-3 above belong to the punch soft delete. Steps 4-7 below add the
+  // missed-punch notice and the make-up (補登) request; new steps go after them.
+  {
+    // 4. Make-up punch requests filed by employees, reviewed by admins.
+    name: "makeup_request table",
+    run: (db) => {
+      if (hasTable(db, "makeup_request")) return false;
+      db.exec(`
+        CREATE TABLE makeup_request (
+          request_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          department TEXT NOT NULL,
+          missed_date TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN ('in', 'out', 'both')),
+          clockin TEXT,
+          clockout TEXT,
+          reason TEXT NOT NULL,
+          applied_at TEXT NOT NULL,
+          state TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'approved', 'rejected')),
+          reviewer_id TEXT,
+          reviewer_name TEXT,
+          reviewed_at TEXT,
+          review_note TEXT,
+          punch_num INTEGER
+        );
+        CREATE INDEX idx_makeup_request_id_date ON makeup_request (id, missed_date);
+        CREATE INDEX idx_makeup_request_state ON makeup_request (state);
+      `);
+      return true;
+    },
+  },
+  {
+    // 5. Who did what to which make-up request, and why.
+    name: "makeup_audit table",
+    run: (db) => {
+      if (hasTable(db, "makeup_audit")) return false;
+      db.exec(`
+        CREATE TABLE makeup_audit (
+          audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          request_id INTEGER NOT NULL,
+          action TEXT NOT NULL CHECK (action IN ('submit', 'approve', 'reject')),
+          actor_id TEXT NOT NULL,
+          actor_name TEXT NOT NULL,
+          reason TEXT NOT NULL,
+          acted_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_makeup_audit_request ON makeup_audit (request_id);
+      `);
+      return true;
+    },
+  },
+  {
+    // 6. A punch created by an approved make-up request points back at it;
+    //    NULL (every existing row) means an ordinary punch.
+    name: "clockinrecord makeup_request_id column",
+    run: (db) => {
+      if (hasColumn(db, "clockinrecord", "makeup_request_id")) return false;
+      db.exec(`ALTER TABLE clockinrecord ADD COLUMN makeup_request_id INTEGER DEFAULT NULL;`);
+      return true;
+    },
+  },
+  {
+    // 7. One row per employee and day the missed-punch notice was handled,
+    //    so a re-run never mails the same person about the same day twice.
+    name: "missed_punch_notice table",
+    run: (db) => {
+      if (hasTable(db, "missed_punch_notice")) return false;
+      db.exec(`
+        CREATE TABLE missed_punch_notice (
+          id TEXT NOT NULL,
+          date TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          channel TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('pending', 'sent', 'failed')),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (id, date)
+        );
+      `);
+      return true;
+    },
+  },
 ];
 
 /** Bring the schema up to date. Runs in one transaction: all steps or none. */

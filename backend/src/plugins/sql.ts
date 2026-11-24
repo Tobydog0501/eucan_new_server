@@ -2,12 +2,18 @@ import crypto from "crypto";
 import Database from "better-sqlite3";
 import logger from './logger'
 import { getSplitTimestamp, fetch_all_nwd, getROCYearsInRange } from "./dayoff_calculate"
-import { userinfo, dayoffinfo, clockinrecord, requestquery, logininfo, digit, dayofftype, dayoffinfo_ret } from "../types/types";
+import { userinfo, userinfo_public, dayoffinfo, clockinrecord, requestquery, logininfo, digit, dayofftype, dayoffinfo_ret } from "../types/types";
+import { hashPassword, verifyPassword } from "./password";
 import { ClockEdit, ClockSheetRow, normalizeTime } from "./clockin_sheet";
 import { join } from "path";
+import { DAYOFF_COLUMNS, dayoffColumnFor, leaveColumn } from "./leave_types";
 import { runMigrations } from "./migrations";
+import { kindsOverlap, MakeupInput, MakeupKind } from "./makeup";
 // const logger = require("./logger.js");
 const log: logger = new logger(`./logs/${new Date().toISOString().split('T')[0]}.log`);
+
+/** userinfo columns that may leave the server (everything except pwd). */
+const USERINFO_PUBLIC_COLUMNS = "id,type,email,name,joinTime,mgroup,permit,status,leaveDate";
 
 export class sql {
 
@@ -81,7 +87,43 @@ export class sql {
     }
   }
 
-  login(user: string, pwd: string | null, cookie: string | null): { msg: string, accountType?: string, sessionKey?: string, name?: string } {
+  /**
+   * Would login() accept these credentials? Read-only: no session is issued
+   * or refreshed and nothing is logged. Used to gate root's second factor.
+   */
+  async credentialsValid(user: string, pwd: string | null, cookie: string | null): Promise<boolean> {
+    if (typeof user !== "string") return false;
+    const row = this.login_db.prepare(`SELECT pwd, status FROM userinfo WHERE id= ?`).get(user) as { pwd: string, status: number } | undefined;
+    if (row === undefined || row.status == 0) return false;
+    if (typeof cookie === "string" && cookie !== "NULL") {
+      const session = this.login_db.prepare(`SELECT sKey, createTime FROM logininfo WHERE id= ?`).get(user) as { sKey: string, createTime: string } | undefined;
+      if (session && session.sKey === cookie && (Date.now() - Date.parse(session.createTime)) <= 60 * 60 * 1000) {
+        return true;
+      }
+    }
+    return (await verifyPassword(pwd, row.pwd)).ok;
+  }
+
+  /**
+   * Replace a stored password (a legacy plain value, or a hash with older cost
+   * parameters) with a fresh hash, but only if the row still holds the value
+   * that was just verified.
+   */
+  private async upgradePasswordHash(user: string, password: string, verifiedStored: string): Promise<void> {
+    try {
+      const hashed = await hashPassword(password);
+      const changed = this.login_db.prepare(`UPDATE userinfo SET pwd= ? WHERE id= ? AND pwd= ?;`).run(hashed, user, verifiedStored).changes;
+      if (changed > 0) log.logFormat(`${user}'s stored password was upgraded to the current hash format.`);
+    } catch (e) {
+      // The login itself already succeeded; the upgrade is retried next time.
+      log.logFormat(`Could not upgrade the stored password of ${user}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  async login(user: string, pwd: string | null, cookie: string | null): Promise<{ msg: string, accountType?: string, sessionKey?: string, name?: string }> {
+    if (typeof user !== "string" || (pwd !== null && typeof pwd !== "string") || (cookie !== null && typeof cookie !== "string")) {
+      return { msg: "wrong type" };
+    }
     if (cookie !== null) {
       if (user.match(/['"?><:;\\|)(*&^%$#@!~`]/) || cookie.match(/['"?><:;\\|)(*&^%$#@!~`]/) || cookie.match(/['"?><:;\\|)(*&^%$#@!~`]/)) {
         return { msg: "wrong type" };
@@ -114,7 +156,11 @@ export class sql {
       }
       else expired = true;
     }
-    if (pwd == sqldata["pwd"]) {
+    const check = await verifyPassword(pwd, sqldata["pwd"]);
+    if (check.ok) {
+      if (check.needsRehash) {
+        await this.upgradePasswordHash(user, pwd as string, sqldata["pwd"]);
+      }
       // Checking database if the user have logined before.
       if (loginHashData == undefined) {
         // Generating hash.
@@ -135,7 +181,7 @@ export class sql {
         log.logFormat(`${user} has logined with password successfully.`, currentTime);
       return { msg: "success", accountType: sqldata["type"], sessionKey: hash, name: sqldata["name"] };
     } else {
-      log.logFormat(`${user} Failed to log in with password: ${pwd}`, currentTime);
+      log.logFormat(`${user} failed to log in: wrong password.`, currentTime);
       return { msg: "wrong pwd" };
     }
   }
@@ -144,8 +190,9 @@ export class sql {
    * 
    * @returns {Array<object>}
    */
-  getAllUsers(): userinfo[] {
-    const data = (this.login_db.prepare(`SELECT * FROM userinfo;`).all() as userinfo[]);
+  getAllUsers(): userinfo_public[] {
+    // Never the stored password: callers may send these rows to the browser.
+    const data = (this.login_db.prepare(`SELECT ${USERINFO_PUBLIC_COLUMNS} FROM userinfo;`).all() as userinfo_public[]);
     return data;
   }
 
@@ -244,37 +291,34 @@ export class sql {
     }
   }
 
-  register(user: string, password: string, mail: string, name: string, type: string, jointime: string, mgroup: digit, permit: digit): void {
+  async register(user: string, password: string, mail: string, name: string, type: string, jointime: string, mgroup: digit, permit: digit): Promise<void> {
     // id,pwd,type,email,name,type,mgroup
-    this.login_db.prepare(`INSERT INTO userinfo (id,pwd,type,email,name,joinTime,mgroup,permit) VALUES (?,?,?,?,?,(strftime('%Y-%m-%d',?)),?,?);`).run(user, password, type, mail, name, jointime, mgroup, permit);
+    const hashed = await hashPassword(password);
+    this.login_db.prepare(`INSERT INTO userinfo (id,pwd,type,email,name,joinTime,mgroup,permit) VALUES (?,?,?,?,?,(strftime('%Y-%m-%d',?)),?,?);`).run(user, hashed, type, mail, name, jointime, mgroup, permit);
     return;
   }
 
-  modify(user: string, year: digit, dayoff: string) {
-    const table = {
-      "特休假": "annual",
-      "事假": "personal",
-      "家庭照顧假": "care",
-      "病假": "sick",
-      "婚假": "wedding",
-      "喪假": "funeral",
-      "分娩假": "birth",
-      "產檢假": "pcheckup",
-      "流產假": "miscarriage",
-      "陪產假": "paternity",
-      "產假": "maternity",
-      "公假": "official",
-      "颱風假": "typhoon",
-      "其他": "other"
-    };
-    const entries: [string, string][] = Object.entries(dayoff)
-    const query: string[] = entries.map((v, i, a) => {
-      return `${v[0]} = ?`;
-    });
-    // console.log(query.join(","))
-    this.login_db.prepare(`UPDATE dayoffinfo SET ${query.join(",")} WHERE id= ? AND year= ?`).run(user, year.toString());
-    return;
-
+  /**
+   * Overwrite leave usage for one user/year. Keys must resolve to a known
+   * dayoffinfo column (see leave_types.ts); values are bound as parameters.
+   * Returns the number of rows updated, or null when any key is not allowed.
+   */
+  modify(user: string, year: string, dayoff: { [key: string]: number }): number | null {
+    const assignments: string[] = [];
+    const values: number[] = [];
+    for (const [key, value] of Object.entries(dayoff)) {
+      const column = dayoffColumnFor(key);
+      if (column === null) {
+        return null;
+      }
+      assignments.push(`${column} = ?`);
+      values.push(value);
+    }
+    if (assignments.length === 0) {
+      return null;
+    }
+    const result = this.login_db.prepare(`UPDATE dayoffinfo SET ${assignments.join(", ")} WHERE id= ? AND year= ?`).run(...values, user, year);
+    return result.changes;
   }
 
   /**
@@ -284,11 +328,17 @@ export class sql {
    * @returns 
    */
   checkHash(user: string, cookie: string): { msg: string, accountType: string, sessionKey: string, name: string } | null {
+    if (typeof user !== "string" || typeof cookie !== "string") {
+      return null;
+    }
     if (user.match(/['"?><:;\\|)(*&^%$#@!~`]/) || cookie.match(/['"?><:;\\|)(*&^%$#@!~`]/)) {
       return null;
     }
-    const sqldata = (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ? `).get(user) as userinfo);
-    const loginHashData = (this.login_db.prepare(`SELECT * FROM logininfo WHERE id= ?;`).get(user) as logininfo);
+    const sqldata = (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ? `).get(user) as userinfo | undefined);
+    const loginHashData = (this.login_db.prepare(`SELECT * FROM logininfo WHERE id= ?;`).get(user) as logininfo | undefined);
+    if (sqldata == undefined || loginHashData == undefined) {
+      return null;
+    }
     const current: Date = new Date();
     const lastLogin = Date.parse(loginHashData["createTime"]);
     const DateLastLogin = new Date(lastLogin);
@@ -474,37 +524,32 @@ export class sql {
   //    return { "mgroup": query["mgroup"], "name": name, "num": count };
   //  }
 
-  showQuery(user: string, state: number = 0, search_query: string = "", limit_query: string = ""): requestquery[] | [] {
-    // const mgroup = this.login_db.prepare(`SELECT * FROM userinfo WHERE id='${user}'`).all()[0]["mgroup"];
-    const query: requestquery[] | [] = (this.login_db.prepare(`SELECT serialnum,name,type,start,end,reason,totalTime FROM requestquery WHERE state= ? ${search_query} ${limit_query};`).all(state) as requestquery[] | []);
-    // log.logFormat(`showquery executed with query: SELECT serialnum,name,type,start,end,reason,totalTime FROM requestquery WHERE state=${state} ${search_query} ${limit_query};`);
+  /**
+   * List tickets in a given state. Every filter value is bound as a query
+   * parameter; never splice caller input into the SQL text.
+   */
+  showQuery(state: number = 0, filters: { id?: string, year?: string, month?: string, limit?: number } = {}): requestquery[] | [] {
+    const clauses: string[] = ["state = ?"];
+    const params: Array<string | number> = [state];
+    if (filters.id) { clauses.push("id = ?"); params.push(filters.id); }
+    if (filters.year) { clauses.push("year = ?"); params.push(filters.year); }
+    if (filters.month) { clauses.push("month = ?"); params.push(filters.month); }
+    let tail = "";
+    if (filters.limit) { tail = " ORDER BY serialnum DESC LIMIT ?"; params.push(filters.limit); }
+    const query: requestquery[] | [] = (this.login_db.prepare(`SELECT serialnum,name,type,start,end,reason,totalTime FROM requestquery WHERE ${clauses.join(" AND ")}${tail};`).all(...params) as requestquery[] | []);
     return query;
   }
 
   setPermit(num: string, state: number): string {
     const query = (this.login_db.prepare(`SELECT * FROM requestquery WHERE serialnum= ? `).get(num) as requestquery);
     const year: string = query["year"];
-    const table = {
-      "特休假": "annual",
-      "特休假_N": "annual_special",
-      "事假": "personal",
-      "家庭照顧假": "care",
-      "病假": "sick",
-      "婚假": "wedding",
-      "喪假": "funeral",
-      "分娩假": "birth",
-      "產檢假": "pcheckup",
-      "流產假": "miscarriage",
-      "陪產假": "paternity",
-      "產假": "maternity",
-      "公假": "official",
-      "停班停課": "typhoon",
-      "其他": "other"
-    };
-    console.log(query["type"]);
+    const column = leaveColumn(query["type"]);
 
     if (state == 1) {
-      if (table[(query["type"] as keyof dayofftype)] == "annual_special") {
+      if (column === null) {
+        throw new Error(`Ticket #${num} has an unknown leave type and cannot be approved.`);
+      }
+      if (column == "annual_special") {
         const ny: number = parseInt(year) + 1;
         if (!this.login_db.prepare(`SELECT * FROM dayoffinfo WHERE id= ? AND year= ?;`).get(query["id"], ny)) {
           this.init(query["id"], ny);
@@ -516,11 +561,12 @@ export class sql {
           this.init(query["id"], year);
         }
 
-        this.login_db.prepare(`UPDATE dayoffinfo SET ${table[(query["type"] as keyof dayofftype)]}=${table[(query["type"] as keyof dayofftype)]}+? WHERE id= ? AND year= ?;`).run(query["totalTime"], query["id"], year);
+        // `column` comes from the fixed leave-type list, never from caller input.
+        this.login_db.prepare(`UPDATE dayoffinfo SET ${column}=${column}+? WHERE id= ? AND year= ?;`).run(query["totalTime"], query["id"], year);
       }
     }
     this.login_db.prepare(`UPDATE requestquery SET state= ? WHERE serialnum= ?;`).run(state, num);
-    log.logFormat(`Dayoff ticket #${num} has been set to ${state ? "accepted" : "denied"}.`);
+    log.logFormat(`Dayoff ticket #${num} has been set to ${state == 1 ? "accepted" : "denied"}.`);
     return (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ? `).get(query["id"]) as userinfo)["email"];
   }
 
@@ -559,7 +605,9 @@ export class sql {
     }
     const column = type == 1 ? "clockin" : "clockout";
     const name: string = (this.login_db.prepare(`SELECT name FROM userinfo WHERE id= ?;`).get(user) as userinfo)["name"];
-    const open = data.find((row) => !row[column]);
+    // A make-up (補登) punch is a finished record approved by an admin; a live
+    // punch never fills its empty half.
+    const open = data.find((row) => !row[column] && row.makeup_request_id == null);
     if (open) {
       this.login_db.prepare(`UPDATE clockinrecord SET ${column}= ? WHERE id= ? AND num= ? AND date= ? AND deleted_at IS NULL;`).run(time, user, open.num, day);
       return { "status": 200 };
@@ -616,7 +664,9 @@ export class sql {
 
   checkRemainAnnual(user: string, year: digit, adds: number, first_half: boolean): boolean {
     const quotaData = this.calculateAnnualQuota(user, year);
-    const used = (this.login_db.prepare(`SELECT annual FROM dayoffinfo WHERE id= ? AND year= ?`).get(user, year) as dayoffinfo)["annual"] as number;
+    // A year with no usage row yet has used nothing (same rule as newRequest).
+    const usedRow = this.login_db.prepare(`SELECT annual FROM dayoffinfo WHERE id= ? AND year= ?`).get(user, year) as dayoffinfo | undefined;
+    const used = usedRow ? (usedRow["annual"] as number) : 0;
     if (quotaData.separate) {
       const q = first_half ? 0 : 24
       if (used + adds <= q) {
@@ -652,97 +702,33 @@ export class sql {
     const tickets = (this.login_db.prepare(`SELECT * FROM requestquery WHERE id= ? AND year= ? AND state=1;`).all(user, year) as requestquery[] | []);
     const ny: number = parseInt(`${year}`) + 1;
     const last_tickets = (this.login_db.prepare(`SELECT * FROM requestquery WHERE id= ? AND year= ? AND state=1;`).all(user, ny - 2) as requestquery[] | []);
-    const table = {
-      "特休假": "annual",
-      "特休假_N": "annual_special",
-      "事假": "personal",
-      "家庭照顧假": "care",
-      "病假": "sick",
-      "婚假": "wedding",
-      "喪假": "funeral",
-      "分娩假": "birth",
-      "產檢假": "pcheckup",
-      "流產假": "miscarriage",
-      "陪產假": "paternity",
-      "產假": "maternity",
-      "公假": "official",
-      "停班停課": "typhoon",
-      "其他": "other"
-    };
-    const amount = {
-      "annual": 0,
-      "annual_special": 0,
-      "personal": 0,
-      "care": 0,
-      "sick": 0,
-      "wedding": 0,
-      "funeral": 0,
-      "birth": 0,
-      "pcheckup": 0,
-      "miscarriage": 0,
-      "paternity": 0,
-      "maternity": 0,
-      "official": 0,
-      "typhoon": 0,
-      "other": 0
-    };
-    const last_amount = {
-      "annual": 0,
-      "annual_special": 0,
-      "personal": 0,
-      "care": 0,
-      "sick": 0,
-      "wedding": 0,
-      "funeral": 0,
-      "birth": 0,
-      "pcheckup": 0,
-      "miscarriage": 0,
-      "paternity": 0,
-      "maternity": 0,
-      "official": 0,
-      "typhoon": 0,
-      "other": 0
-    };
-    type atp = {
-      "annual": 0,
-      "annual_special": 0,
-      "personal": 0,
-      "care": 0,
-      "sick": 0,
-      "wedding": 0,
-      "funeral": 0,
-      "birth": 0,
-      "pcheckup": 0,
-      "miscarriage": 0,
-      "paternity": 0,
-      "maternity": 0,
-      "official": 0,
-      "typhoon": 0,
-      "other": 0
-    };
-    for (let ticket of tickets) {
-      amount[(table[(ticket["type"] as keyof dayofftype)] as keyof atp)] += ticket["totalTime"];
+    // Sum approved hours per column. Tickets with a type outside the fixed
+    // leave-type list are skipped (and logged) rather than turned into SQL.
+    const amount: { [column: string]: number } = {};
+    const lastAnnualSpecial = last_tickets
+      .filter((ticket) => leaveColumn(ticket["type"]) === "annual_special")
+      .reduce((sum, ticket) => sum + ticket["totalTime"], 0);
+    for (const column of DAYOFF_COLUMNS) {
+      amount[column] = 0;
     }
-    for (let ticket of last_tickets) {
-      last_amount[(table[(ticket["type"] as keyof dayofftype)] as keyof atp)] += ticket["totalTime"];
-    }
-    this.init(user, year);
-    var amount_array: string[] = [];
-    amount["annual"] += last_amount["annual_special"];
-    const values = [];
-    for (let type of Object.keys(amount)) {
-      if (type == "undefined") continue;
-      // console.log(type);
-      if (type == "annual_special") {
+    for (const ticket of tickets) {
+      const column = leaveColumn(ticket["type"]);
+      if (column === null) {
+        log.logFormat(`Skipping ticket #${ticket["serialnum"]} with unknown leave type while syncing ${user}.`);
         continue;
       }
-      amount_array.push(`${type} = ? `);
-      values.push(amount[(type as keyof atp)]);
+      if (column === "annual_special") {
+        continue;
+      }
+      amount[column] += ticket["totalTime"];
     }
-    values.push(user, year);
-    let queryString = amount_array.join(", ");
-    log.logFormat(`Syncing ${user}'s data with query: ${queryString}`);
-    this.login_db.prepare(`UPDATE dayoffinfo SET ${queryString} WHERE id= ? AND year= ?;`).run(values);
+    amount["annual"] += lastAnnualSpecial;
+    this.init(user, year);
+    const assignments = DAYOFF_COLUMNS.map((column) => `${column} = ?`);
+    const values: Array<string | number> = DAYOFF_COLUMNS.map((column) => amount[column]);
+    values.push(user, `${year}`);
+    log.logFormat(`Syncing ${user}'s leave usage for ${year}.`);
+    this.login_db.prepare(`UPDATE dayoffinfo SET ${assignments.join(", ")} WHERE id= ? AND year= ?;`).run(...values);
     return;
   }
 
@@ -753,40 +739,73 @@ export class sql {
     });
   }
 
+  /**
+   * Edit (action 1) or delete (action 0) a ticket, then recompute the usage of
+   * every leave year the ticket touched before and after the change. Runs in
+   * one transaction so the ticket and the usage rows never disagree.
+   * Returns null when an annual-leave edit would exceed the quota.
+   */
   modifyTicket(num: string, action: number, type: string, start: string, end: string, totalTime: number, state: digit, reason: string): number | null {
     const ticket = (this.login_db.prepare(`SELECT * FROM requestquery WHERE serialnum= ?;`).get(num) as requestquery);
     const user = ticket["id"];
-    const query = (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ?;`).get(user) as userinfo);
-    // const userinfo = this.login_db.prepare(`SELECT * FROM userinfo WHERE id='${query["id"]}'`).all()[0];
-    const checkpoint = new Date(`${end.split("-")[0]}-${query["joinTime"].substring(5)}`);
-    const endDate = new Date(end.split(" ")[0]);
-    const year = checkpoint > endDate ? (parseInt(end.split("-")[0]) - 1).toString() : end.split("-")[0];
-    if (action == 0) {
-      // Delete
-      this.login_db.prepare(`DELETE FROM requestquery WHERE serialnum= ?;`).run(num);
-      log.logFormat(`Ticket #${num} has been DELETED.`);
-      this.syncTickets(user, ticket["year"]);
+    const oldYear = `${ticket["year"]}`;
+    // Approved 特休假_N tickets count towards the following year (see syncTickets).
+    const affectedYears = (year: string, ticketType: string): string[] =>
+      leaveColumn(ticketType) === "annual_special" ? [year, `${parseInt(year) + 1}`] : [year];
+
+    const run = this.login_db.transaction((): number | null => {
+      if (action == 0) {
+        this.login_db.prepare(`DELETE FROM requestquery WHERE serialnum= ?;`).run(num);
+        log.logFormat(`Ticket #${num} has been DELETED.`);
+        for (const y of new Set(affectedYears(oldYear, ticket["type"]))) this.syncTickets(user, y);
+        return 0;
+      }
+
+      const query = (this.login_db.prepare(`SELECT * FROM userinfo WHERE id= ?;`).get(user) as userinfo);
+      const checkpoint = new Date(`${end.split("-")[0]}-${query["joinTime"].substring(5)}`);
+      const endDate = new Date(end.split(" ")[0]);
+      const year = checkpoint > endDate ? (parseInt(end.split("-")[0]) - 1).toString() : end.split("-")[0];
+
+      if (type === "特休假") {
+        // dayoffinfo.annual only holds approved tickets; the old copy of this
+        // ticket is already counted there only if it was approved annual leave
+        // in the same leave year.
+        const counted = ticket["type"] === "特休假" && `${ticket["state"]}` === "1" && oldYear === year ? ticket["totalTime"] : 0;
+        const { m } = calculate(new Date(query["joinTime"]), new Date());
+        if (this.checkRemainAnnual(user, parseInt(year), totalTime - counted, m < 6) == false) {
+          log.logFormat(`${user} try to request a dayoff but exceed annual quota.`);
+          return null;
+        }
+      }
+      const new_reason: string = reason.replace("<", "").replace(">", "").replace('"', '');
+      this.login_db.prepare(`UPDATE requestquery SET type= ?, start= ?, end= ?, totalTime= ?, state= ?, year= ?, reason= ?, month= ? WHERE serialnum= ?;`)
+        .run(type, start, end, totalTime, state, year, new_reason, parseInt(start.split("-")[1]), num);
+      const years = new Set([...affectedYears(oldYear, ticket["type"]), ...affectedYears(year, type)]);
+      for (const y of years) this.syncTickets(user, y);
       return 0;
-    }
-    const { m, d } = calculate(new Date(start), new Date(end));
-    if (this.checkRemainAnnual(user, parseInt(year), parseInt(`${totalTime}`) - ticket.totalTime, m < 6) == false) {
-      log.logFormat(`${user} try to request a dayoff but exceed annual quota.`);
-      return null;
-    }
-    const new_reason: string = reason.replace("<", "").replace(">", "").replace('"', '');
-    this.login_db.prepare(`UPDATE requestquery SET type= ?, start= ?, end= ?, totalTime= ?, state= ?, year= ?, reason= ? WHERE serialnum= ?;`).run(type, start, end, totalTime, state, year, new_reason, num);
-    // log.logFormat(`Ticket #${num} from ${user} has been MODIFIED: type='${type}', start='${start}', end='${end}', totalTime=${totalTime}, state=${state}, year='${year}'`);
-    this.syncTickets(user, ticket["year"]);
-    return 0;
+    });
+    return run();
   }
 
-  modifyEmployeeInfo(user: string, pwd: string, type: string, email: string, name: string, joinTime: string, mgroup: digit, permit: digit, status: digit, leaveDate: string | null): void {
-    this.login_db.prepare(`UPDATE userinfo SET pwd= ?,type= ?,email= ?,name= ?,joinTime= ?,mgroup= ?,permit= ?,status= ?,leaveDate= ? WHERE id= ?;`).run(pwd, type, email, name, joinTime, mgroup, permit, status, leaveDate, user);
+  /** `pwd` null or empty keeps the current password; anything else is stored hashed. */
+  async modifyEmployeeInfo(user: string, pwd: string | null, type: string, email: string, name: string, joinTime: string, mgroup: digit, permit: digit, status: digit, leaveDate: string | null): Promise<void> {
+    const hashed = typeof pwd === "string" && pwd.length > 0 ? await hashPassword(pwd) : null;
+    this.login_db.transaction(() => {
+      this.login_db.prepare(`UPDATE userinfo SET type= ?,email= ?,name= ?,joinTime= ?,mgroup= ?,permit= ?,status= ?,leaveDate= ? WHERE id= ?;`).run(type, email, name, joinTime, mgroup, permit, status, leaveDate, user);
+      if (hashed !== null) {
+        this.login_db.prepare(`UPDATE userinfo SET pwd= ? WHERE id= ?;`).run(hashed, user);
+      }
+    })();
     return;
   }
 
-  getUser(id: string): userinfo | null {
-    const row = this.login_db.prepare(`SELECT * FROM userinfo WHERE id = ?;`).get(id) as userinfo | undefined;
+  getTicket(num: string): requestquery | null {
+    const row = this.login_db.prepare(`SELECT * FROM requestquery WHERE serialnum = ?;`).get(num) as requestquery | undefined;
+    return row ? row : null;
+  }
+
+  getUser(id: string): userinfo_public | null {
+    const row = this.login_db.prepare(`SELECT ${USERINFO_PUBLIC_COLUMNS} FROM userinfo WHERE id = ?;`).get(id) as userinfo_public | undefined;
     return row ? row : null;
   }
 
@@ -938,7 +957,7 @@ export class sql {
    */
   clockinPunches(id: string, date: string, includeDeleted: boolean): PunchRow[] {
     const rows = this.login_db.prepare(
-      `SELECT id, name, date, num, clockin, clockout, deleted_at, deleted_by, delete_reason
+      `SELECT id, name, date, num, clockin, clockout, deleted_at, deleted_by, delete_reason, makeup_request_id
        FROM clockinrecord WHERE id = ? AND date = ?${includeDeleted ? "" : " AND deleted_at IS NULL"} ORDER BY num;`
     ).all(id, date) as clockinrecord[];
     return rows.map((row) => ({
@@ -952,6 +971,8 @@ export class sql {
       deletedAt: row.deleted_at ?? null,
       deletedBy: row.deleted_by ?? null,
       deleteReason: row.delete_reason ?? null,
+      makeup: row.makeup_request_id != null,
+      makeupRequestId: row.makeup_request_id ?? null,
     }));
   }
 
@@ -1022,6 +1043,152 @@ export class sql {
     ).run(action, target.id, target.date, target.num, punch.clockin, punch.clockout, actor.id, actor.name, reason);
   }
 
+  /** Approved leave tickets that touch `date` (YYYY-MM-DD). */
+  approvedLeavesOnDate(date: string): Array<{ id: string, start: string, end: string }> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return [];
+    }
+    return this.login_db.prepare(
+      `SELECT id, start, end FROM requestquery
+       WHERE state = 1 AND date(start) <= ? AND date(end) >= ?;`
+    ).all(date, date) as Array<{ id: string, start: string, end: string }>;
+  }
+
+  /** One person's leave tickets in the given states (0 pending, 1 approved) that touch `date`. */
+  leavesOnDate(date: string, id: string, states: number[]): Array<{ id: string, start: string, end: string }> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !states.length) {
+      return [];
+    }
+    return this.login_db.prepare(
+      `SELECT id, start, end FROM requestquery
+       WHERE id = ? AND state IN (${states.map(() => '?').join(', ')}) AND date(start) <= ? AND date(end) >= ?;`
+    ).all(id, ...states, date, date) as Array<{ id: string, start: string, end: string }>;
+  }
+
+  // ---- Make-up punch (補登) requests ------------------------------------
+
+  /**
+   * File a make-up request and write its 'submit' audit row, in one
+   * transaction. Returns 'duplicate' when a pending or approved request of the
+   * same person already covers the same half of that day.
+   */
+  createMakeupRequest(applicant: { id: string, name: string, department: string }, input: MakeupInput): number | "duplicate" {
+    return this.login_db.transaction((): number | "duplicate" => {
+      const existing = this.login_db.prepare(
+        `SELECT kind FROM makeup_request WHERE id = ? AND missed_date = ? AND state IN ('pending', 'approved');`
+      ).all(applicant.id, input.date) as Array<{ kind: MakeupKind }>;
+      if (existing.some((row) => kindsOverlap(row.kind, input.kind))) return "duplicate";
+      const result = this.login_db.prepare(
+        `INSERT INTO makeup_request (id, name, department, missed_date, kind, clockin, clockout, reason, applied_at, state)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'), 'pending');`
+      ).run(applicant.id, applicant.name, applicant.department, input.date, input.kind, input.clockin, input.clockout, input.reason);
+      const requestId = Number(result.lastInsertRowid);
+      this.writeMakeupAudit(requestId, "submit", { id: applicant.id, name: applicant.name }, input.reason);
+      return requestId;
+    })();
+  }
+
+  getMakeupRequest(requestId: number): MakeupRequestRow | null {
+    const row = this.login_db.prepare(`SELECT * FROM makeup_request WHERE request_id = ?;`).get(requestId) as MakeupRequestRow | undefined;
+    return row ? row : null;
+  }
+
+  /** One person's own requests, newest first. */
+  makeupRequestsOf(id: string): MakeupRequestRow[] {
+    return this.login_db.prepare(`SELECT * FROM makeup_request WHERE id = ? ORDER BY request_id DESC;`).all(id) as MakeupRequestRow[];
+  }
+
+  /** Every request, optionally in one state; pending ones oldest first, others newest first. */
+  makeupRequests(state?: MakeupState): MakeupRequestRow[] {
+    if (state) {
+      const order = state === "pending" ? "ASC" : "DESC";
+      return this.login_db.prepare(`SELECT * FROM makeup_request WHERE state = ? ORDER BY request_id ${order};`).all(state) as MakeupRequestRow[];
+    }
+    return this.login_db.prepare(`SELECT * FROM makeup_request ORDER BY request_id DESC;`).all() as MakeupRequestRow[];
+  }
+
+  /** Kinds of one person's pending or approved make-up requests for `date`. */
+  activeMakeupKindsOn(id: string, date: string): MakeupKind[] {
+    const rows = this.login_db.prepare(
+      `SELECT kind FROM makeup_request WHERE id = ? AND missed_date = ? AND state IN ('pending', 'approved');`
+    ).all(id, date) as Array<{ kind: MakeupKind }>;
+    return rows.map((row) => row.kind);
+  }
+
+  /** Ids of people with a pending make-up request for `date`. */
+  pendingMakeupIdsOn(date: string): string[] {
+    const rows = this.login_db.prepare(`SELECT DISTINCT id FROM makeup_request WHERE missed_date = ? AND state = 'pending';`).all(date) as Array<{ id: string }>;
+    return rows.map((row) => row.id);
+  }
+
+  /**
+   * Approve or reject a pending request, in one transaction. Approval inserts
+   * the punch (flagged with makeup_request_id) under a fresh number for that
+   * day; rejection inserts nothing. Both write an audit row.
+   */
+  reviewMakeupRequest(requestId: number, decision: "approve" | "reject", actor: { id: string, name: string }, note: string): MakeupReview {
+    return this.login_db.transaction((): MakeupReview => {
+      const request = this.getMakeupRequest(requestId);
+      if (!request) return { result: "missing" };
+      if (request.state !== "pending") return { result: "not-pending", state: request.state };
+      let punchNum: number | null = null;
+      if (decision === "approve") {
+        // Count soft-deleted rows too, so a later restore cannot clash.
+        const max = this.login_db.prepare(`SELECT MAX(num) AS n FROM clockinrecord WHERE id = ? AND date = ?;`).get(request.id, request.missed_date) as { n: number | null };
+        punchNum = (Number(max.n) || 0) + 1;
+        this.login_db.prepare(
+          `INSERT INTO clockinrecord (id, name, date, num, clockin, clockout, makeup_request_id) VALUES (?, ?, ?, ?, ?, ?, ?);`
+        ).run(request.id, request.name, request.missed_date, punchNum, request.clockin, request.clockout, request.request_id);
+      }
+      this.login_db.prepare(
+        `UPDATE makeup_request SET state = ?, reviewer_id = ?, reviewer_name = ?, review_note = ?, punch_num = ?,
+           reviewed_at = strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours')
+         WHERE request_id = ? AND state = 'pending';`
+      ).run(decision === "approve" ? "approved" : "rejected", actor.id, actor.name, note, punchNum, requestId);
+      this.writeMakeupAudit(requestId, decision, actor, note);
+      return { result: "done", request: this.getMakeupRequest(requestId) as MakeupRequestRow };
+    })();
+  }
+
+  /** Audit trail of make-up requests, oldest first. */
+  makeupAudit(requestId?: number): MakeupAuditRow[] {
+    if (requestId != null) {
+      return this.login_db.prepare(`SELECT * FROM makeup_audit WHERE request_id = ? ORDER BY audit_id;`).all(requestId) as MakeupAuditRow[];
+    }
+    return this.login_db.prepare(`SELECT * FROM makeup_audit ORDER BY audit_id;`).all() as MakeupAuditRow[];
+  }
+
+  private writeMakeupAudit(requestId: number, action: "submit" | "approve" | "reject", actor: { id: string, name: string }, reason: string): void {
+    this.login_db.prepare(
+      `INSERT INTO makeup_audit (request_id, action, actor_id, actor_name, reason, acted_at)
+       VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'));`
+    ).run(requestId, action, actor.id, actor.name, reason);
+  }
+
+  // ---- Missed-punch notice de-duplication -------------------------------
+
+  /**
+   * Claim the notice for (id, date). True when this caller should send it:
+   * no notice exists yet, or the earlier attempt failed. A notice that was
+   * sent (or is being sent) is never claimed again.
+   */
+  claimMissedPunchNotice(id: string, date: string, kind: string, channel: string): boolean {
+    const result = this.login_db.prepare(
+      `INSERT INTO missed_punch_notice (id, date, kind, channel, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'pending', strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'), strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'))
+       ON CONFLICT(id, date) DO UPDATE SET
+         status = 'pending', kind = excluded.kind, channel = excluded.channel, updated_at = excluded.updated_at
+       WHERE missed_punch_notice.status = 'failed';`
+    ).run(id, date, kind, channel);
+    return result.changes > 0;
+  }
+
+  finishMissedPunchNotice(id: string, date: string, status: "sent" | "failed"): void {
+    this.login_db.prepare(
+      `UPDATE missed_punch_notice SET status = ?, updated_at = strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours') WHERE id = ? AND date = ?;`
+    ).run(status, id, date);
+  }
+
   private clockMonthParts(year: string | number, month: string | number): { year: string; month: string } {
     return {
       year: String(year),
@@ -1075,7 +1242,45 @@ export type PunchRow = {
   deletedAt: string | null;
   deletedBy: string | null;
   deleteReason: string | null;
+  makeup: boolean;
+  makeupRequestId: number | null;
 };
+
+export type MakeupState = "pending" | "approved" | "rejected";
+
+export type MakeupRequestRow = {
+  request_id: number;
+  id: string;
+  name: string;
+  department: string;
+  missed_date: string;
+  kind: MakeupKind;
+  clockin: string | null;
+  clockout: string | null;
+  reason: string;
+  applied_at: string;
+  state: MakeupState;
+  reviewer_id: string | null;
+  reviewer_name: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  punch_num: number | null;
+};
+
+export type MakeupAuditRow = {
+  audit_id: number;
+  request_id: number;
+  action: "submit" | "approve" | "reject";
+  actor_id: string;
+  actor_name: string;
+  reason: string;
+  acted_at: string;
+};
+
+export type MakeupReview =
+  | { result: "done", request: MakeupRequestRow }
+  | { result: "missing" }
+  | { result: "not-pending", state: MakeupState };
 
 export type PunchAuditRow = {
   audit_id: number;

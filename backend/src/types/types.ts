@@ -18,6 +18,9 @@ export interface userinfo extends table {
   leaveDate: string | null
 }
 
+/** A userinfo row without the stored password; the only shape that may be sent to clients. */
+export type userinfo_public = Omit<userinfo, 'pwd'>;
+
 export interface logininfo extends table {
   id: string,
   sKey: string,
@@ -73,7 +76,8 @@ export interface clockinrecord extends table {
   clockout: string | null,
   deleted_at?: string | null,
   deleted_by?: string | null,
-  delete_reason?: string | null
+  delete_reason?: string | null,
+  makeup_request_id?: number | null
 }
 
 export type digit = string | number

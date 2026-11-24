@@ -21,7 +21,7 @@ $(function () {
 
     function information(year, userId) {
         $.ajax({
-            url: `https://eucan.ddns.net:3000/sync`,
+            url: `${EUCAN_API_BASE}/sync`,
             type: 'POST',
             dataType: 'json',
             headers: {
@@ -146,7 +146,7 @@ $(function () {
     };
     function quota(year) {
         return $.ajax({
-            url: `https://eucan.ddns.net:3000/quota`,
+            url: `${EUCAN_API_BASE}/quota`,
             type: "POST",
             dataType: "json",
             headers: {
@@ -161,7 +161,7 @@ $(function () {
     }
     function dayoff(year) {
         return $.ajax({
-            url: `https://eucan.ddns.net:3000/dayoff`,
+            url: `${EUCAN_API_BASE}/dayoff`,
             type: "POST",
             dataType: "json",
             headers: {

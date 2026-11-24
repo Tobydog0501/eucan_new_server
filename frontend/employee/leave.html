@@ -1,16 +1,14 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-Hant-TW">
 
 <head>
-	<title>祐肯請假系統</title>
-
+	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<meta content="text/html;charset=utf-8" http-equiv="Content-Type">
-	<meta content="utf-8" http-equiv="encoding">
-	<link rel="icon" type="image/x-icon" href="../../img/logo.ico">
-
-	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0/dist/css/bootstrap.min.css" rel="stylesheet"
-		integrity="sha384-wEmeIV1mKuiNpC+IOBjI7aAzPcEZeedi5yW5f2yOq55WWLwNGmvvx4Um1vskeMj0" crossorigin="anonymous">
+	<title>祐肯請假系統</title>
+	<link rel="icon" type="image/x-icon" href="../img/logo.ico">
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+	<link rel="stylesheet" href="../css/theme.css">
+	<link id="eucan-navbar-css" rel="stylesheet" href="../css/navbar.css">
 	<link rel="stylesheet" href="../css/employeeleave.css">
 </head>
 
@@ -18,18 +16,20 @@
 
 	<div id="navbar-container"></div>
 
-	<main class="leave-page">
-		<div class="leave-card">
-			<h1 class="leave-title">請假</h1>
+	<main class="eu-page">
+		<header class="eu-page-header">
+			<h1 class="eu-page-title">請假</h1>
+		</header>
 
-			<section id="info">
-				<h2 class="leave-section-title">特休假</h2>
+		<div class="eu-page-narrow ms-0 leave-layout">
+			<section id="info" class="eu-card">
+				<h2 class="eu-section-title">特休假</h2>
 				<div class="leave-year-row">
-					<select>
+					<select class="form-select" aria-label="年度">
 						<option>當年度</option>
 						<option>下年度</option>
 					</select>
-					<button type="button" id="search" class="btn btn-primary">查詢</button>
+					<button type="button" id="search" class="btn btn-outline-primary">查詢</button>
 				</div>
 				<div class="leave-stats">
 					<div class="leave-stat">
@@ -43,61 +43,61 @@
 				</div>
 			</section>
 
-			<hr class="leave-divider">
+			<section class="eu-card">
+				<h2 class="eu-section-title">送出假單</h2>
+				<div class="row g-3">
+					<div id="dayofftypeD" class="col-12">
+						<label class="form-label" for="type">假別</label>
+						<select id="type" class="form-select">
+							<option>選擇假別</option>
+							<option>特休假</option>
+							<option>事假</option>
+							<option>病假</option>
+							<option>婚假</option>
+							<option>喪假</option>
+							<option>家庭照顧假</option>
+							<option>分娩假</option>
+							<option>產檢假</option>
+							<option>流產假</option>
+							<option>陪產假</option>
+							<option>產假</option>
+							<option>公假</option>
+							<option>停班停課</option>
+						</select>
+					</div>
 
-			<section>
-				<h2 class="leave-section-title">送出假單</h2>
-				<div id="dayofftypeD" class="leave-field">
-					<label for="type">假別</label>
-					<select id="type">
-						<option>選擇假別</option>
-						<option>特休假</option>
-						<option>事假</option>
-						<option>病假</option>
-						<option>婚假</option>
-						<option>喪假</option>
-						<option>家庭照顧假</option>
-						<option>分娩假</option>
-						<option>產檢假</option>
-						<option>流產假</option>
-						<option>陪產假</option>
-						<option>產假</option>
-						<option>公假</option>
-						<option>停班停課</option>
-					</select>
-				</div>
+					<div id="startD" class="col-12">
+						<label class="form-label" for="start_day">開始時間</label>
+						<div class="leave-datetime">
+							<input id="start_day" class="form-control" type="date" min="2024-01-01" max="5000-12-31" />
+							<input id="start_time" class="form-control" type="time" aria-label="開始時刻" />
+						</div>
+					</div>
 
-				<div id="startD" class="leave-field">
-					<label for="start_day">開始時間</label>
-					<div class="leave-datetime">
-						<input id="start_day" type="date" min="2024-01-01" max="5000-12-31" />
-						<input id="start_time" type="time" />
+					<div id="endD" class="col-12">
+						<label class="form-label" for="end_day">結束時間</label>
+						<div class="leave-datetime">
+							<input id="end_day" class="form-control" type="date" min="2024-01-01" max="5000-12-31" />
+							<input id="end_time" class="form-control" type="time" aria-label="結束時刻" />
+						</div>
+					</div>
+
+					<div id="reasonD" class="col-12">
+						<label class="form-label" for="reason">事由</label>
+						<input type="text" class="form-control" placeholder="事由" id="reason" />
+					</div>
+
+					<div class="col-12">
+						<button type="button" id="submit" class="btn btn-primary leave-submit">送出申請</button>
 					</div>
 				</div>
-
-				<div id="endD" class="leave-field">
-					<label for="end_day">結束時間</label>
-					<div class="leave-datetime">
-						<input id="end_day" type="date" min="2024-01-01" max="5000-12-31" />
-						<input id="end_time" type="time" />
-					</div>
-				</div>
-
-				<div id="reasonD" class="leave-field">
-					<label for="reason">事由</label>
-					<input type="text" placeholder="事由" id="reason" />
-				</div>
-
-				<button type="button" id="submit" class="btn btn-primary leave-submit">送出申請</button>
 			</section>
 		</div>
 	</main>
 
 	<script src="../js/jquery-3.7.1.min.js"></script>
 	<script src="../js/cookieOperation.js"></script>
-	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.1/dist/js/bootstrap.bundle.min.js"
-		integrity="sha384-/bQdsTh/da6pkI1MST/rWKFNjaCP5gBSY4sEBT38Q/9RBh9AH40zEOg7Hlq2THRZ"
-		crossorigin="anonymous"></script>
+	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
 	<script src="../js/employeeleave.js"></script>
 </body>
 
