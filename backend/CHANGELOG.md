@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Admins can soft-delete a mistaken clock-in punch (reason required, audited); root can see and restore deleted punches.
+- Idempotent schema migrations, run at start-up or with `npm run migrate`.
+
 ## [1.6.2] 2025-11-17
 
 ### Added

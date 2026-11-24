@@ -17,7 +17,7 @@ const log = new logger(`./logs/${new Date().toISOString().split('T')[0]}.log`);
 const sqlPlugin: sql = new sql();
 const mailers = new mailer();
 const app: Express = express();
-const PORT: number = 3000;
+const PORT: number = parseInt(process.env.PORT || '3000', 10);
 
 app.use(bodyParser.urlencoded({
   extended: true

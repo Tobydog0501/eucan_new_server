@@ -297,3 +297,50 @@ Modify an existing user’s data.
 - **400 Bad Request**: Invalid input data.
 - **403 Forbidden**: No permission.
 
+---
+
+### 13. List Clock-in Punches of One Day
+
+**Endpoint:**
+![GET](https://img.shields.io/badge/GET-0052CC?style=flat-square&logo=appveyor&logoColor=white) `/api/clockin/punches`
+
+**Description:**  
+Every punch of one employee on one day (admins only). Soft-deleted punches and the audit trail are only returned to root.
+
+**Query:** `account`, `cookie`, `id` (employee id), `date` (`YYYY-MM-DD`)
+
+**Response:**
+- **200 OK**: `{ "id", "date", "canRestore": boolean, "punches": [{ "num", "clockin", "clockout", "deleted", "deletedAt", "deletedBy", "deleteReason" }], "audit": [...] }`
+- **400 Bad Request**: Invalid input data.
+- **403 Forbidden**: No permission.
+
+---
+
+### 14. Delete / Restore a Clock-in Punch
+
+**Endpoint:**
+![POST](https://img.shields.io/badge/POST-FF4136?style=flat-square&logo=appveyor&logoColor=white) `/api/clockin/punch/delete`
+![POST](https://img.shields.io/badge/POST-FF4136?style=flat-square&logo=appveyor&logoColor=white) `/api/clockin/punch/restore`
+
+**Description:**  
+Soft-delete one punch (admins; punches of admin or built-in accounts: root only), or restore a deleted one (root only). The row is kept and marked with `deleted_at`, `deleted_by` and `delete_reason`; every delete and restore is written to `clockin_punch_audit`. Deleted punches are left out of every clock-in view, the month sheet and the PDF exports; an already generated month sheet is regenerated.
+
+**Request Body:**
+```json
+{
+  "account": "string",
+  "cookie": "string",
+  "id": "string",      // Employee id.
+  "date": "string",    // YYYY-MM-DD
+  "num": 1,            // Punch number from /api/clockin/punches.
+  "reason": "string"   // Required, at most 200 characters.
+}
+```
+
+**Response:**
+- **200 OK**: `{ "status": "deleted" | "restored", "masterRefreshed": boolean }`
+- **400 Bad Request**: Invalid input data or missing reason.
+- **403 Forbidden**: No permission.
+- **404 Not Found**: No such (live / deleted) punch.
+- **409 Conflict**: Duplicate legacy rows share this punch number.
+
