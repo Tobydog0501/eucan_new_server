@@ -12,7 +12,6 @@ $(function () {
 
     const apiBase = EUCAN_API_BASE;
     const editModal = new bootstrap.Modal(document.getElementById("clockinEditModal"));
-    const punchModal = new bootstrap.Modal(document.getElementById("punchModal"));
     let viewToken = 0;
     let directoryToken = 0;
     let periodToken = 0;
@@ -117,12 +116,8 @@ $(function () {
         return masterReady === true ? "總表沒有這位員工的紀錄" : "請先重新載入，產生該月總表";
     }
 
-    function editButton(id, name, date, clockin, clockout) {
-        return `<button type="button" class="btn btn-sm btn-outline-primary record-edit-btn" data-id="${attr(id)}" data-name="${attr(name)}" data-date="${attr(date)}" data-clockin="${attr(clockin)}" data-clockout="${attr(clockout)}">補正</button>`;
-    }
-
-    function punchButton(id, name, date) {
-        return `<button type="button" class="btn btn-sm btn-outline-danger record-punch-btn" data-id="${attr(id)}" data-name="${attr(name)}" data-date="${attr(date)}">打卡明細</button>`;
+    function editButton(id, name, date, clockin, clockout, modified) {
+        return `<button type="button" class="btn btn-sm btn-outline-primary record-edit-btn" data-id="${attr(id)}" data-name="${attr(name)}" data-date="${attr(date)}" data-clockin="${attr(clockin)}" data-clockout="${attr(clockout)}" data-modified="${modified === true ? "1" : ""}">補正</button>`;
     }
 
     function downloadButton(id, name, downloadable, masterReady) {
@@ -215,8 +210,7 @@ $(function () {
                     ${modifiedRows}
                     ${record.makeup === true ? '<div class="record-card-row"><span>補登</span><span>是（已核准）</span></div>' : ""}
                     <div class="record-card-actions">
-                        ${editButton(record.id, record.name, targetDate, record.clockin, record.clockout)}
-                        ${punchButton(record.id, record.name, targetDate)}
+                        ${editButton(record.id, record.name, targetDate, record.clockin, record.clockout, record.modified)}
                         ${downloadButton(record.id, record.name, record.downloadable, masterReady)}
                     </div>
                 </div>
@@ -252,7 +246,7 @@ $(function () {
                     <td class="record-cell-reason">${modified ? displayValue(day.reason) : ""}</td>
                     <td>${modified ? displayValue(day.editorName) : ""}</td>
                     <td>${modified ? displayValue(day.editedAt) : ""}</td>
-                    <td>${editButton(id, name, date, day.clockin, day.clockout)} ${punchButton(id, name, date)}</td>
+                    <td>${editButton(id, name, date, day.clockin, day.clockout, day.modified)}</td>
                 </tr>
             `;
         }
@@ -461,7 +455,15 @@ $(function () {
         $("#clockinEditClockin").val(toTimeInput(target.clockin));
         $("#clockinEditClockout").val(toTimeInput(target.clockout));
         $("#clockinEditReason").val("");
+        punchTarget = { session: editSession, id: target.id, name: target.name, date: target.date, modified: target.modified === true };
+        hidePunchForm();
+        $("#punchNotice").toggleClass("d-none", !punchTarget.modified).text(punchTarget.modified
+            ? "這天已有補正，打卡紀錄顯示的是補正後的時間；刪除下面的打卡不會改變顯示，除非把補正的時間清空。"
+            : "");
+        $("#punchList").html('<div class="calendar-empty">載入中...</div>');
+        $("#punchAudit").empty();
         editModal.show();
+        refreshPunches();
     }
 
     async function saveEdit() {
@@ -531,8 +533,28 @@ $(function () {
 
     function hidePunchForm() {
         punchAction = null;
-        $("#punchActionForm").addClass("d-none");
+        $("#punchActionBox").addClass("d-none");
         $("#punchActionReason").val("");
+    }
+
+    const HALF_LABEL = { clockin: "上班", clockout: "下班", both: "整筆" };
+
+    // One half (上班 or 下班) of a punch: its time plus a delete button, or,
+    // for root, the deleted time with a restore button.
+    function halfCell(punch, part, canRestore) {
+        const live = punch[part];
+        const removed = part === "clockin" ? punch.deletedClockin : punch.deletedClockout;
+        const data = `data-num="${attr(punch.num)}" data-part="${part}" data-time="${attr(live || removed)}"`;
+        if (punch.deleted === true) {
+            return `<span class="text-muted">${displayValue(live)}</span>`;
+        }
+        if (live) {
+            return `${displayValue(live)} <button type="button" class="btn btn-sm btn-outline-danger ms-1 punch-delete-btn" ${data}>刪除</button>`;
+        }
+        if (removed && canRestore) {
+            return `<s class="text-muted">${displayValue(removed)}</s> <span class="badge bg-secondary">已刪除</span> <button type="button" class="btn btn-sm btn-outline-success ms-1 punch-restore-btn" ${data}>復原</button>`;
+        }
+        return displayValue(null);
     }
 
     function renderPunches(data) {
@@ -549,23 +571,24 @@ $(function () {
             for (const punch of data.punches) {
                 const deleted = punch.deleted === true;
                 const status = deleted
-                    ? `已刪除<br><small>${displayValue(punch.deletedBy)}／${displayValue(punch.deletedAt)}<br>原因：${displayValue(punch.deleteReason)}</small>`
-                    : (punch.makeup === true ? "有效（補登）" : "有效");
-                const button = deleted
-                    ? (canRestore ? `<button type="button" class="btn btn-sm btn-outline-success punch-restore-btn" data-num="${attr(punch.num)}" data-clockin="${attr(punch.clockin)}" data-clockout="${attr(punch.clockout)}">復原</button>` : "")
-                    : `<button type="button" class="btn btn-sm btn-outline-danger punch-delete-btn" data-num="${attr(punch.num)}" data-clockin="${attr(punch.clockin)}" data-clockout="${attr(punch.clockout)}">刪除</button>`;
+                    ? `整筆已刪除<br><small>${displayValue(punch.deletedBy)}／${displayValue(punch.deletedAt)}<br>原因：${displayValue(punch.deleteReason)}</small>`
+                    : (!punch.clockin && !punch.clockout
+                        ? '<span class="text-muted">已無有效時間</span>'
+                        : (punch.makeup === true ? "有效（補登）" : "有效"));
+                const wholeRestore = deleted && canRestore
+                    ? `<button type="button" class="btn btn-sm btn-outline-success punch-restore-btn" data-num="${attr(punch.num)}" data-part="both" data-time="">復原整筆</button>`
+                    : "";
                 rows += `
-                    <tr class="${deleted ? "table-secondary text-muted" : ""}">
+                    <tr class="${deleted ? "table-secondary" : ""}">
                         <td>${escapeHtml(punch.num)}</td>
-                        <td>${displayValue(punch.clockin)}</td>
-                        <td>${displayValue(punch.clockout)}</td>
-                        <td>${status}</td>
-                        <td>${button}</td>
+                        <td>${halfCell(punch, "clockin", canRestore)}</td>
+                        <td>${halfCell(punch, "clockout", canRestore)}</td>
+                        <td>${status}${wholeRestore ? `<div class="mt-1">${wholeRestore}</div>` : ""}</td>
                     </tr>`;
             }
             $("#punchList").html(`
-                <table class="table table-sm table-bordered">
-                    <thead><tr><th>#</th><th>上班</th><th>下班</th><th>狀態</th><th>操作</th></tr></thead>
+                <table class="table table-sm table-bordered align-middle">
+                    <thead><tr><th>#</th><th>上班</th><th>下班</th><th>狀態</th></tr></thead>
                     <tbody>${rows}</tbody>
                 </table>`);
         }
@@ -578,43 +601,54 @@ $(function () {
         let items = "";
         for (const entry of audit) {
             const verb = entry.action === "restore" ? "復原" : "刪除";
-            items += `<li>${displayValue(entry.acted_at)} ${displayValue(entry.actor_name)}（${displayValue(entry.actor_id)}）${verb}第 ${escapeHtml(entry.punch_num)} 筆，原因：${displayValue(entry.reason)}</li>`;
+            const half = entry.part === "clockin" || entry.part === "clockout"
+                ? `的${HALF_LABEL[entry.part]}（${displayValue(entry.part === "clockin" ? entry.clockin : entry.clockout)}）`
+                : "";
+            items += `<li>${displayValue(entry.acted_at)} ${displayValue(entry.actor_name)}（${displayValue(entry.actor_id)}）${verb}第 ${escapeHtml(entry.punch_num)} 筆${half}，原因：${displayValue(entry.reason)}</li>`;
         }
         $("#punchAudit").html(`<div class="fw-bold mb-1">稽核紀錄</div><ul class="small mb-0">${items}</ul>`);
     }
 
-    async function refreshPunches() {
+    // Without a 補正 the day shows the earliest 上班 and the latest 下班 of
+    // its live punches; keep the 補正 inputs in step after a delete / restore
+    // so saving does not bring a deleted time back.
+    function syncEditTimes(data) {
+        if (!punchTarget || punchTarget.modified || !data || !Array.isArray(data.punches)) return;
+        let clockin = null;
+        let clockout = null;
+        for (const punch of data.punches) {
+            if (punch.deleted === true) continue;
+            if (punch.clockin && (clockin === null || punch.clockin < clockin)) clockin = punch.clockin;
+            if (punch.clockout && (clockout === null || punch.clockout > clockout)) clockout = punch.clockout;
+        }
+        $("#clockinEditClockin").val(toTimeInput(clockin || ""));
+        $("#clockinEditClockout").val(toTimeInput(clockout || ""));
+    }
+
+    async function refreshPunches(syncTimes) {
         if (!punchTarget) return;
         const target = punchTarget;
         const data = await fetchPunches(target.id, target.date);
         if (punchTarget !== target) return;
         renderPunches(data);
-    }
-
-    function openPunches(target) {
-        punchTarget = target;
-        hidePunchForm();
-        $("#punchModalTitle").text(`打卡明細 ${target.name} ${target.date}`);
-        $("#punchList").html('<div class="calendar-empty">載入中...</div>');
-        $("#punchAudit").empty();
-        punchModal.show();
-        refreshPunches();
+        if (syncTimes) syncEditTimes(data);
     }
 
     function showPunchForm(kind, button) {
         const num = button.attr("data-num") || "";
-        const clockin = button.attr("data-clockin") || "無";
-        const clockout = button.attr("data-clockout") || "無";
-        punchAction = { kind, num };
+        const part = button.attr("data-part") || "both";
+        const time = button.attr("data-time") || "";
+        punchAction = { kind, num, part };
         const verb = kind === "restore" ? "復原" : "刪除";
-        $("#punchActionTitle").text(`${verb}第 ${num} 筆打卡（上班 ${clockin}／下班 ${clockout}）`);
+        const what = part === "both" ? "整筆打卡" : `${HALF_LABEL[part]}打卡（${time}）`;
+        $("#punchActionTitle").text(`${verb}第 ${num} 筆的${what}`);
         $("#punchActionLabel").text(`${verb}原因（必填）`);
         $("#punchActionSubmit")
             .text(`確認${verb}`)
             .toggleClass("btn-danger", kind === "delete")
             .toggleClass("btn-success", kind === "restore");
         $("#punchActionReason").val("");
-        $("#punchActionForm").removeClass("d-none");
+        $("#punchActionBox").removeClass("d-none");
         $("#punchActionReason").trigger("focus");
     }
 
@@ -622,11 +656,12 @@ $(function () {
         if (punchBusy || !punchTarget || !punchAction) return;
         const reason = String($("#punchActionReason").val() || "").trim();
         const verb = punchAction.kind === "restore" ? "復原" : "刪除";
+        const what = punchAction.part === "both" ? "打卡紀錄" : `${HALF_LABEL[punchAction.part]}打卡`;
         if (!reason) {
             alert(`請填寫${verb}原因`);
             return;
         }
-        if (!window.confirm(`確定要${verb} ${punchTarget.name} ${punchTarget.date} 的第 ${punchAction.num} 筆打卡紀錄嗎？`)) return;
+        if (!window.confirm(`確定要${verb} ${punchTarget.name} ${punchTarget.date} 第 ${punchAction.num} 筆的${what}嗎？`)) return;
         const target = punchTarget;
         const action = punchAction;
         punchBusy = true;
@@ -642,6 +677,7 @@ $(function () {
                     id: target.id,
                     date: target.date,
                     num: Number(action.num),
+                    part: action.part,
                     reason,
                 }),
             });
@@ -656,7 +692,7 @@ $(function () {
                 return;
             }
             hidePunchForm();
-            await refreshPunches();
+            await refreshPunches(true);
             await renderCurrent();
         } catch (error) {
             console.error(error);
@@ -708,19 +744,12 @@ $(function () {
             date: button.attr("data-date") || "",
             clockin: button.attr("data-clockin") || "",
             clockout: button.attr("data-clockout") || "",
+            modified: button.attr("data-modified") === "1",
         });
     });
     $("#calendarGrid").on("click", ".record-download-btn", function () {
         if (this.disabled) return;
         downloadPersonal($(this).attr("data-id") || "", $(this).attr("data-name") || "");
-    });
-    $("#calendarGrid").on("click", ".record-punch-btn", function () {
-        const button = $(this);
-        openPunches({
-            id: button.attr("data-id") || "",
-            name: button.attr("data-name") || "",
-            date: button.attr("data-date") || "",
-        });
     });
     $("#punchList").on("click", ".punch-delete-btn", function () {
         showPunchForm("delete", $(this));
@@ -729,11 +758,8 @@ $(function () {
         showPunchForm("restore", $(this));
     });
     $("#punchActionCancel").on("click", hidePunchForm);
-    $("#punchActionForm").on("submit", (event) => {
-        event.preventDefault();
-        submitPunchAction();
-    });
-    document.getElementById("punchModal").addEventListener("hidden.bs.modal", () => {
+    $("#punchActionSubmit").on("click", submitPunchAction);
+    document.getElementById("clockinEditModal").addEventListener("hidden.bs.modal", () => {
         punchTarget = null;
         hidePunchForm();
     });

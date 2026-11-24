@@ -385,7 +385,7 @@ test('migration: make-up and notice steps run twice without error and keep old r
     const db = new Database(file);
     try {
       const first = runMigrations(db);
-      assert.deepEqual(first.applied.slice(3), NEW_STEPS);
+      assert.deepEqual(first.applied.slice(3, 3 + NEW_STEPS.length), NEW_STEPS);
       assert.deepEqual(runMigrations(db).applied, []);
       assert.deepEqual(runMigrations(db).applied, []);
       const cols = db.prepare('PRAGMA table_info(clockinrecord)').all().map((c) => c.name);
@@ -406,7 +406,7 @@ test('migration: make-up and notice steps run twice without error and keep old r
       p.exec(`CREATE TABLE clockinrecord (id TEXT NOT NULL,name TEXT NOT NULL,date DATETIME,num INT DEFAULT 1,clockin DATETIME,clockout DATETIME,deleted_at TEXT,deleted_by TEXT,delete_reason TEXT);
         CREATE TABLE clockin_punch_audit (audit_id INTEGER PRIMARY KEY);
         CREATE INDEX idx_clockinrecord_id_date ON clockinrecord (id, date);`);
-      assert.deepEqual(runMigrations(p).applied, NEW_STEPS);
+      assert.deepEqual(runMigrations(p).applied, [...NEW_STEPS, 'clockinrecord half-delete columns']);
       assert.deepEqual(runMigrations(p).applied, []);
     } finally {
       p.close();

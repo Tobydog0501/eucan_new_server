@@ -599,7 +599,7 @@ export class sql {
     // invisible here: they are not returned, not filled in, and a new punch
     // never reuses their number.
     const all = (this.login_db.prepare(`SELECT * FROM clockinrecord WHERE date= ? AND id= ? ORDER BY num;`).all(day, user) as clockinrecord[]);
-    const data = all.filter((row) => row.deleted_at == null).map(livePunch);
+    const data = all.filter(isLiveRow).map(livePunch);
     if (type == 0) {
       return data;
     }
@@ -607,7 +607,9 @@ export class sql {
     const name: string = (this.login_db.prepare(`SELECT name FROM userinfo WHERE id= ?;`).get(user) as userinfo)["name"];
     // A make-up (補登) punch is a finished record approved by an admin; a live
     // punch never fills its empty half.
-    const open = data.find((row) => !row[column] && row.makeup_request_id == null);
+    // Nor does it refill a half an admin deleted on purpose (see softDeletePunch).
+    const deletedColumn = type == 1 ? "deleted_clockin" : "deleted_clockout";
+    const open = all.find((row) => isLiveRow(row) && !row[column] && row[deletedColumn] == null && row.makeup_request_id == null);
     if (open) {
       this.login_db.prepare(`UPDATE clockinrecord SET ${column}= ? WHERE id= ? AND num= ? AND date= ? AND deleted_at IS NULL;`).run(time, user, open.num, day);
       return { "status": 200 };
@@ -687,12 +689,12 @@ export class sql {
    * @param {string} month 
    */
   async clockinRecord(year: digit, month: digit): Promise<[] | clockinrecord[]> {
-    const query = (this.login_db.prepare(`SELECT * FROM clockinrecord WHERE date LIKE ? AND deleted_at IS NULL;`).all(`${year}-${month}-%`) as clockinrecord[]).map(livePunch);
+    const query = (this.login_db.prepare(`SELECT * FROM clockinrecord WHERE date LIKE ? AND deleted_at IS NULL AND (clockin IS NOT NULL OR clockout IS NOT NULL);`).all(`${year}-${month}-%`) as clockinrecord[]).map(livePunch);
     return new Promise(res => { res(query) });
   }
 
   clockinYears(): number[] {
-    const rows = this.login_db.prepare(`SELECT DISTINCT substr(date, 1, 4) AS year FROM clockinrecord WHERE deleted_at IS NULL ORDER BY year;`).all() as Array<{ year: string }>;
+    const rows = this.login_db.prepare(`SELECT DISTINCT substr(date, 1, 4) AS year FROM clockinrecord WHERE deleted_at IS NULL AND (clockin IS NOT NULL OR clockout IS NOT NULL) ORDER BY year;`).all() as Array<{ year: string }>;
     return rows
       .map((row) => parseInt(row.year, 10))
       .filter((year) => !Number.isNaN(year));
@@ -919,7 +921,7 @@ export class sql {
     const parts = this.clockMonthParts(year, month);
     const prefix = `${parts.year}-${parts.month}-%`;
     const rows = this.login_db.prepare(
-      `SELECT id FROM clockinrecord WHERE date LIKE ? AND deleted_at IS NULL
+      `SELECT id FROM clockinrecord WHERE date LIKE ? AND deleted_at IS NULL AND (clockin IS NOT NULL OR clockout IS NOT NULL)
        UNION
        SELECT id FROM clockin_edit WHERE date LIKE ?
        UNION
@@ -957,10 +959,14 @@ export class sql {
    */
   clockinPunches(id: string, date: string, includeDeleted: boolean): PunchRow[] {
     const rows = this.login_db.prepare(
-      `SELECT id, name, date, num, clockin, clockout, deleted_at, deleted_by, delete_reason, makeup_request_id
-       FROM clockinrecord WHERE id = ? AND date = ?${includeDeleted ? "" : " AND deleted_at IS NULL"} ORDER BY num;`
+      `SELECT id, name, date, num, clockin, clockout, deleted_at, deleted_by, delete_reason, makeup_request_id, deleted_clockin, deleted_clockout
+       FROM clockinrecord WHERE id = ? AND date = ? ORDER BY num;`
     ).all(id, date) as clockinrecord[];
-    return rows.map((row) => ({
+    // Admins see only live halves; root also sees deleted punches and halves.
+    const visible = includeDeleted
+      ? rows.filter((row) => isLiveRow(row) || row.deleted_at != null || row.deleted_clockin != null || row.deleted_clockout != null)
+      : rows.filter(isLiveRow);
+    return visible.map((row) => ({
       id: row.id,
       name: row.name,
       date: row.date,
@@ -971,6 +977,8 @@ export class sql {
       deletedAt: row.deleted_at ?? null,
       deletedBy: row.deleted_by ?? null,
       deleteReason: row.delete_reason ?? null,
+      deletedClockin: includeDeleted ? normalizeTime(row.deleted_clockin ?? null) : null,
+      deletedClockout: includeDeleted ? normalizeTime(row.deleted_clockout ?? null) : null,
       makeup: row.makeup_request_id != null,
       makeupRequestId: row.makeup_request_id ?? null,
     }));
@@ -981,13 +989,25 @@ export class sql {
    * Returns 'missing' when no live punch matches, 'ambiguous' when more than
    * one does (legacy duplicates), otherwise 'done'.
    */
-  softDeletePunch(target: PunchKey, actor: { id: string, name: string }, reason: string): PunchChange {
+  softDeletePunch(target: PunchKey, actor: { id: string, name: string }, reason: string, part: PunchPart = "both"): PunchChange {
     return this.login_db.transaction((): PunchChange => {
       const live = this.login_db.prepare(
         `SELECT clockin, clockout FROM clockinrecord WHERE id = ? AND date = ? AND num = ? AND deleted_at IS NULL;`
       ).all(target.id, target.date, target.num) as Array<{ clockin: string | null, clockout: string | null }>;
       if (live.length === 0) return "missing";
       if (live.length > 1) return "ambiguous";
+      if (part !== "both") {
+        // Only one half: move its time aside so root can put it back.
+        const value = live[0][part];
+        if (value == null) return "missing";
+        this.login_db.prepare(
+          `UPDATE clockinrecord SET deleted_${part} = ${part}, ${part} = NULL
+           WHERE id = ? AND date = ? AND num = ? AND deleted_at IS NULL;`
+        ).run(target.id, target.date, target.num);
+        this.writePunchAudit("delete", target, halfOf(part, value), actor, reason, part);
+        return "done";
+      }
+      if (live[0].clockin == null && live[0].clockout == null) return "missing";
       this.login_db.prepare(
         `UPDATE clockinrecord SET deleted_at = strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'), deleted_by = ?, delete_reason = ?
          WHERE id = ? AND date = ? AND num = ? AND deleted_at IS NULL;`
@@ -998,8 +1018,24 @@ export class sql {
   }
 
   /** Undo softDeletePunch; same return values. The audit trail keeps both events. */
-  restorePunch(target: PunchKey, actor: { id: string, name: string }, reason: string): PunchChange {
+  restorePunch(target: PunchKey, actor: { id: string, name: string }, reason: string, part: PunchPart = "both"): PunchChange {
     return this.login_db.transaction((): PunchChange => {
+      if (part !== "both") {
+        const halves = this.login_db.prepare(
+          `SELECT ${part} AS current, deleted_${part} AS removed FROM clockinrecord WHERE id = ? AND date = ? AND num = ?;`
+        ).all(target.id, target.date, target.num) as Array<{ current: string | null, removed: string | null }>;
+        const withRemoved = halves.filter((row) => row.removed != null);
+        if (withRemoved.length === 0) return "missing";
+        if (halves.length > 1) return "ambiguous";
+        // The half was filled again in the meantime: putting the old time back would overwrite it.
+        if (withRemoved[0].current != null) return "conflict";
+        this.login_db.prepare(
+          `UPDATE clockinrecord SET ${part} = deleted_${part}, deleted_${part} = NULL
+           WHERE id = ? AND date = ? AND num = ? AND deleted_${part} IS NOT NULL;`
+        ).run(target.id, target.date, target.num);
+        this.writePunchAudit("restore", target, halfOf(part, withRemoved[0].removed), actor, reason, part);
+        return "done";
+      }
       const rows = this.login_db.prepare(
         `SELECT clockin, clockout, deleted_at FROM clockinrecord WHERE id = ? AND date = ? AND num = ?;`
       ).all(target.id, target.date, target.num) as Array<{ clockin: string | null, clockout: string | null, deleted_at: string | null }>;
@@ -1025,7 +1061,7 @@ export class sql {
     if (filter.date) { clauses.push("punch_date = ?"); params.push(filter.date); }
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
     return this.login_db.prepare(
-      `SELECT audit_id, action, punch_id, punch_date, punch_num, clockin, clockout, actor_id, actor_name, reason, acted_at
+      `SELECT audit_id, action, punch_id, punch_date, punch_num, clockin, clockout, actor_id, actor_name, reason, acted_at, part
        FROM clockin_punch_audit${where} ORDER BY audit_id DESC;`
     ).all(...params) as PunchAuditRow[];
   }
@@ -1035,12 +1071,13 @@ export class sql {
     target: PunchKey,
     punch: { clockin: string | null, clockout: string | null },
     actor: { id: string, name: string },
-    reason: string
+    reason: string,
+    part: PunchPart = "both"
   ): void {
     this.login_db.prepare(
-      `INSERT INTO clockin_punch_audit (action, punch_id, punch_date, punch_num, clockin, clockout, actor_id, actor_name, reason, acted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'));`
-    ).run(action, target.id, target.date, target.num, punch.clockin, punch.clockout, actor.id, actor.name, reason);
+      `INSERT INTO clockin_punch_audit (action, punch_id, punch_date, punch_num, clockin, clockout, actor_id, actor_name, reason, acted_at, part)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'), ?);`
+    ).run(action, target.id, target.date, target.num, punch.clockin, punch.clockout, actor.id, actor.name, reason, part === "both" ? null : part);
   }
 
   /** Approved leave tickets that touch `date` (YYYY-MM-DD). */
@@ -1229,7 +1266,10 @@ export class sql {
 
 export type PunchKey = { id: string, date: string, num: number };
 
-export type PunchChange = "done" | "missing" | "ambiguous";
+export type PunchChange = "done" | "missing" | "ambiguous" | "conflict";
+
+/** The whole punch, or only its 上班 / 下班 half. */
+export type PunchPart = "both" | "clockin" | "clockout";
 
 export type PunchRow = {
   id: string;
@@ -1242,6 +1282,8 @@ export type PunchRow = {
   deletedAt: string | null;
   deletedBy: string | null;
   deleteReason: string | null;
+  deletedClockin: string | null;
+  deletedClockout: string | null;
   makeup: boolean;
   makeupRequestId: number | null;
 };
@@ -1294,12 +1336,23 @@ export type PunchAuditRow = {
   actor_name: string;
   reason: string;
   acted_at: string;
+  /** Which half was deleted / restored; null for the whole punch. */
+  part: "clockin" | "clockout" | null;
 };
 
 /** A live punch in the shape callers had before soft delete existed. */
 function livePunch(row: clockinrecord): clockinrecord {
-  const { deleted_at, deleted_by, delete_reason, ...rest } = row;
+  const { deleted_at, deleted_by, delete_reason, deleted_clockin, deleted_clockout, ...rest } = row;
   return rest;
+}
+
+/** Not soft-deleted, and at least one half still has a time. */
+function isLiveRow(row: clockinrecord): boolean {
+  return row.deleted_at == null && (row.clockin != null || row.clockout != null);
+}
+
+function halfOf(part: "clockin" | "clockout", value: string | null): { clockin: string | null, clockout: string | null } {
+  return part === "clockin" ? { clockin: value, clockout: null } : { clockin: null, clockout: value };
 }
 
 type ClockEditSqlRow = {

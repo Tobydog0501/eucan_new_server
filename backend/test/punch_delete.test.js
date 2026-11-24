@@ -275,6 +275,85 @@ test('clockin punches: legacy duplicate rows are refused instead of deleted toge
   });
 });
 
+test('punch half delete: 上班 and 下班 are deleted separately, views follow, root restores each half', async () => {
+  await withServer(async (server) => {
+    // Bad part is refused; admins may not restore.
+    assert.equal((await del(server, 'admin1', { num: 2, part: 'lunch' })).status, 400);
+
+    // Delete only the 下班 of #2: the day keeps 上班 07:05 but has no 下班 left.
+    let res = await del(server, 'admin1', { num: 2, part: 'clockout', reason: '下班打錯' });
+    assert.equal(res.status, 200, res.text);
+    assert.equal(res.json.part, 'clockout');
+    let rows = punchRows(server);
+    assert.equal(rows[1].clockin, '08:25');
+    assert.equal(rows[1].clockout, null);
+    assert.equal(rows[1].deleted_clockout, '17:40');
+    assert.equal(rows[1].deleted_at, null);
+    let day = await dayView(server);
+    assert.equal(day.clockin, '07:05');
+    assert.equal(day.clockout, null);
+    assert.equal((await monthDay(server)).clockout, null);
+
+    // The same half cannot be deleted twice.
+    assert.equal((await del(server, 'admin1', { num: 2, part: 'clockout' })).status, 404);
+
+    // Delete the stray 上班 of #1: that row has no half left and drops out of every view.
+    assert.equal((await del(server, 'admin1', { num: 1, part: 'clockin' })).status, 200);
+    day = await dayView(server);
+    assert.equal(day.clockin, '08:25');
+    const adminList = await get(server, '/api/clockin/punches', 'admin1', { id: 'emp1', date: DATE });
+    assert.deepEqual(adminList.json.punches.map((p) => [p.num, p.clockin, p.clockout, p.deletedClockout]), [[2, '08:25', null, null]]);
+
+    // root sees the deleted halves and the audit says which half.
+    const rootList = await get(server, '/api/clockin/punches', 'root', { id: 'emp1', date: DATE });
+    assert.deepEqual(rootList.json.punches.map((p) => [p.num, p.clockin, p.deletedClockin, p.clockout, p.deletedClockout]),
+      [[1, null, '07:05', null, null], [2, '08:25', null, null, '17:40']]);
+    assert.deepEqual(auditRows(server).map((a) => [a.action, a.punch_num, a.part, a.clockin, a.clockout]),
+      [['delete', 2, 'clockout', null, '17:40'], ['delete', 1, 'clockin', '07:05', null]]);
+
+    assert.equal((await restore(server, 'admin1', { num: 2, part: 'clockout' })).status, 403);
+    res = await restore(server, 'root', { num: 2, part: 'clockout' });
+    assert.equal(res.status, 200, res.text);
+    rows = punchRows(server);
+    assert.equal(rows[1].clockout, '17:40');
+    assert.equal(rows[1].deleted_clockout, null);
+    assert.equal((await dayView(server)).clockout, '17:40');
+    assert.equal((await restore(server, 'root', { num: 2, part: 'clockout' })).status, 404);
+  });
+});
+
+test('clockinAction: a deleted half is never refilled, and its restore is refused if it was', async () => {
+  await inWorkdir(({ load }) => {
+    const { sql } = load('plugins/sql.js');
+    const db = new sql();
+    try {
+      const at = (hh, mm) => new Date(PAST_YEAR, Number(MONTH) - 1, DAY, hh, mm);
+      const who = { id: 'admin1', name: 'Admin One' };
+      db.clockinAction('emp1', 1, at(8, 0));
+      db.clockinAction('emp1', -1, at(17, 0));
+      assert.equal(db.softDeletePunch({ id: 'emp1', date: DATE, num: 1 }, who, '下班打錯', 'clockout'), 'done');
+      // A later 下班 goes to a new row instead of the deleted half.
+      db.clockinAction('emp1', -1, at(17, 30));
+      const live = db.clockinAction('emp1', 0, at(18, 0));
+      assert.deepEqual(live.map((r) => [r.num, r.clockin, r.clockout]), [[1, '08:00', null], [2, null, '17:30']]);
+      assert.ok(live.every((r) => !('deleted_clockout' in r)));
+      assert.equal(db.restorePunch({ id: 'emp1', date: DATE, num: 1 }, { id: 'root', name: 'Root' }, 'ok', 'clockout'), 'done');
+
+      // Only possible by hand (legacy data): the half was filled again, so restoring would overwrite it.
+      assert.equal(db.softDeletePunch({ id: 'emp1', date: DATE, num: 1 }, who, 'x', 'clockin'), 'done');
+      const raw = new Database(path.join(process.cwd(), 'databases', 'loginDatabase.db'));
+      try {
+        raw.prepare('UPDATE clockinrecord SET clockin = ? WHERE id = ? AND num = 1').run('09:00', 'emp1');
+      } finally {
+        raw.close();
+      }
+      assert.equal(db.restorePunch({ id: 'emp1', date: DATE, num: 1 }, { id: 'root', name: 'Root' }, 'ok', 'clockin'), 'conflict');
+    } finally {
+      db.close();
+    }
+  });
+});
+
 const LEGACY_COLUMNS = 'id, name, date, num, clockin, clockout';
 
 test('migration: runs twice without error and keeps legacy rows intact', async () => {
