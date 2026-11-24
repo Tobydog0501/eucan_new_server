@@ -72,6 +72,27 @@ API：`GET /api/clockin/punches`、`POST /api/clockin/punch/delete`、`POST /api
 
 `backend/.dockerignore` 排除了 `.env`、資料庫檔與資料目錄，映像檔裡不再包含設定與資料。正式站的 `docker-compose.yml` 改為把 `./backend/.env` 以唯讀方式掛到容器的 `/app/.env`，程式讀取方式（`dotenv`）不變。部署前請確認主機上的 `backend/.env` 存在。
 
+## 自動部署（CD）
+
+推到 `main` 且「Backend tests」通過後，`.github/workflows/deploy.yml` 會自動部署正式站；也可以在 Actions 頁的「Deploy production」按 Run workflow 手動部署（可指定 main 上的某個 commit，用來重新部署或退回舊版）。
+
+部署在正式主機上的 **self-hosted runner** 執行（GitHub 不需要 SSH 或任何金鑰），實際步驟在 `scripts/deploy.sh`：
+
+1. 檢查正式站 checkout（`DEPLOY_DIR`）在 `main`、沒有未 commit 的修改、`backend/.env` 存在；有修改就停止，不會蓋掉主機上直接改的東西。
+2. 備份資料庫到 `backend/databases/backups/`（用 SQLite 線上備份，含 WAL 內容；保留最新 30 份，`BACKUP_KEEP` 可調）。
+3. `git merge --ff-only` 到要部署的 commit，`docker compose build`（舊容器在 build 期間繼續服務），再 `up -d --force-recreate`。
+4. 等後端回應 `GET /`（最多 120 秒）且所有服務都在執行。失敗就自動退回前一個 commit、重新 build 並啟動，workflow 標示失敗。migration 只會新增，所以舊版程式可以在已升級的資料庫上執行。
+
+### 一次性設定（正式主機）
+
+1. 確認正式站 checkout 在 `main`、`git status` 乾淨、`git fetch` 可以連到 GitHub。
+2. GitHub repo → Settings → Actions → Runners → New self-hosted runner（Linux），照畫面在主機上安裝，設定時加上 label **`eucan-prod`**，並用 `sudo ./svc.sh install && sudo ./svc.sh start` 裝成服務。runner 的帳號要能執行 `docker`（加入 `docker` 群組），並對正式站 checkout 有寫入權限。
+3. Settings → Secrets and variables → Actions → Variables 新增 repository variable **`DEPLOY_DIR`**＝正式站 checkout 的絕對路徑（例如 `/srv/eucan_new_server`）。
+4. Settings → Environments 會自動出現 `production`，部署紀錄在那裡；之後若想改成手動核准，在這個 environment 加 Required reviewers 即可。
+5. 因為 repo 是 public：Settings → Actions → General 的 fork PR 設成「Require approval for all outside collaborators」。`deploy.yml` 本身只由 push 到 main 與手動觸發，fork 的 PR 不會跑到這台 runner；**不要**在其他 workflow 用 `runs-on: self-hosted`。
+
+手動在主機上部署也可以直接跑：`DEPLOY_DIR=$PWD scripts/deploy.sh`。
+
 ## 測試站設定
 
 測試站用 `docker-compose-test.yml`：不啟動 nginx（不會申請 Let's Encrypt 憑證），所有資料目錄都掛到 `./testenv/`（已列入 `.gitignore`），不寄信、不下載政府行事曆。
