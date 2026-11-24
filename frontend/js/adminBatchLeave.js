@@ -104,14 +104,14 @@ $(function () {
         const rows = filtered.map((item) => {
             const checked = selected.has(item.id) ? "checked" : "";
             const displayName = item.name && String(item.name).trim() ? item.name : "（未填姓名）";
-            return `<tr>
-                <td><input class="form-check-input employee-check" type="checkbox" value="${escapeAttr(item.id)}" ${checked}></td>
-                <td>${escapeHtml(item.id)}</td>
-                <td>${escapeHtml(displayName)}</td>
-            </tr>`;
+            return `<label class="eu-pick">
+                <input class="form-check-input employee-check" type="checkbox" value="${escapeAttr(item.id)}" ${checked}>
+                <span class="eu-pick-id">${escapeHtml(item.id)}</span>
+                <span class="eu-pick-name">${escapeHtml(displayName)}</span>
+            </label>`;
         }).join("");
 
-        $("#table").html(rows || `<tr><td colspan="3" class="text-center text-muted">沒有符合的在職員工</td></tr>`);
+        $("#table").html(rows || `<p class="eu-pick-empty text-muted mb-0">沒有符合的在職員工</p>`);
         updateSelectedCount();
     }
 
