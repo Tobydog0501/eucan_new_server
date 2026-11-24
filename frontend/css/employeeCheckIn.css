@@ -33,6 +33,9 @@
     display: block;
     width: 100%;
     aspect-ratio: 3 / 2;
+    /* 高度只跟寬度連動的話，矮螢幕／Windows 縮放 125–150% 的筆電上圖片會塞滿畫面；
+       依視窗高度設上限，超過時裁切而不變形 */
+    max-height: 35vh;
     object-fit: cover;
 }
 
