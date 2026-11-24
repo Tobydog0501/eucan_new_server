@@ -1,56 +1,45 @@
 /**
  * Missed-punch notice (未打卡通知信).
  *
- * Every day at 00:00 Asia/Taipei (and once at start-up, to catch up after a
- * restart) the previous day is checked: an active employee who should have
- * worked that day but has no clock-in or no clock-out gets one mail.
+ * Every day at 23:30 Asia/Taipei (NOTICE_TIME) that same day is checked: an
+ * active employee who should have worked but has no clock-in or no clock-out
+ * gets one mail that evening. At start-up yesterday (and today, once past
+ * 23:30) is checked again, so a restart around 23:30 loses nothing.
  *
+ *  - Only while the 「未打卡通知信」 feature (missed_punch_notice, 功能管理) is
+ *    on at 23:30 of the day checked.
  *  - Working days come from the office calendar the leave system already uses
  *    (national holidays and make-up workdays included); approved leave that
  *    covers 08:30 / 17:30 excuses the clock-in / clock-out.
  *  - At most one notice per person and day (table missed_punch_notice).
- *  - Nothing is mailed unless MISSED_PUNCH_MAIL_ENABLED is on, MAIL_TEST_MODE
- *    is off and MAIL_DISABLED is not 1. Otherwise the mail is written to a
- *    file in MAIL_OUTBOX_DIR (default ./logs/mail-outbox) so it can be checked.
+ *  - MAIL_TEST_MODE=1 or MAIL_DISABLED=1 keeps the mail in a file in
+ *    MAIL_OUTBOX_DIR (default ./logs/mail-outbox) instead of sending it.
  *  - Log lines carry only the internal account id, the date and the outcome.
  */
 import fs from 'fs';
 import path from 'path';
 import { sql } from './sql';
 import logger from './logger';
-import { mailer, mailDisabled } from './mailer';
+import { mailer, mailDisabled, MISSED_PUNCH_SUBJECT, missedPunchBody } from './mailer';
 import { aggregateDay, ClockEdit, taipeiToday } from './clockin_sheet';
 import { check_working_day } from './dayoff_calendar';
-import { msUntilNextTaipeiMidnight } from './archive_schedule';
 import { kindsOverlap } from './makeup';
+import { isFeatureOn, taipeiMinute } from './features';
 
-export const MISSED_PUNCH_SUBJECT = '祐肯企業上下班未打卡系統通知';
+// 通知信主旨與內文放在 mailer.ts（和其他系統信件一起）；這裡轉出給既有呼叫端。
+export { MISSED_PUNCH_SUBJECT, missedPunchBody, noticeDateText } from './mailer';
 
 /** Path of the make-up request page, relative to the site root. */
 export const MAKEUP_PAGE_PATH = '/employee/makeup.html';
 
-/** "2026-03-02" -> "2026年03月02日" */
-export function noticeDateText(date: string): string {
-  const [year, month, day] = date.split('-');
-  return `${year}年${month}月${day}日`;
-}
+/** Daily check time (Taipei): the day's notices go out at 23:30 that same day. */
+export const NOTICE_TIME = '23:30';
 
-/** The fixed notice text with name and date filled in, then the page link. */
-export function missedPunchBody(name: string, date: string, link: string): string {
-  return [
-    `員工 ${name}您好：`,
-    `經系統查核，發現您於 ${noticeDateText(date)} 有未打卡紀錄，請確認當日出勤狀況。`,
-    '如因忘記打卡、系統異常或其他特殊原因而未完成打卡，請儘速填寫補打卡申請，並註明實際上班或下班時間及未打卡原因，由人資單位協助辦理補打卡作業。',
-    '請同仁確實落實每日上下班打卡，以維護出勤紀錄之正確性。',
-    '感謝您的配合！',
-    '<此信為系統自動發送，請勿回覆>',
-    '',
-    `補打卡申請頁：${link}`,
-  ].join('\n');
-}
+/** Production site origin, used for the link when APP_BASE_URL is not set. */
+export const DEFAULT_SITE_ORIGIN = 'https://eucan.ddns.net';
 
 export type NoticeConfig = {
-  /** True only when real SMTP sending is switched on, test mode is off and MAIL_DISABLED is not 1. */
+  /** True unless MAIL_TEST_MODE or MAIL_DISABLED keeps the mail in the outbox. */
   realSend: boolean;
   outboxDir: string;
   link: string;
@@ -61,27 +50,54 @@ function isOn(value: string | undefined): boolean {
 }
 
 /**
- *   MISSED_PUNCH_MAIL_ENABLED  1/true to really send (default: off)
- *   MAIL_TEST_MODE             1/true forces the outbox even when enabled
- *   MAIL_DISABLED              1 forces the outbox too (the site-wide no-mail switch)
- *   MAIL_OUTBOX_DIR            where the outbox files go (default ./logs/mail-outbox)
- *   APP_BASE_URL               site origin for the link, e.g. https://test.example
- *                              (unset: the link is the site-relative path)
+ *   MAIL_TEST_MODE   1/true keeps the mail in the outbox instead of sending
+ *   MAIL_DISABLED    1 keeps it in the outbox too (the site-wide no-mail switch)
+ *   MAIL_OUTBOX_DIR  where the outbox files go (default ./logs/mail-outbox)
+ *   APP_BASE_URL     site origin for the link (default https://eucan.ddns.net)
  */
 export function noticeConfig(env: NodeJS.ProcessEnv = process.env): NoticeConfig {
-  const base = (env.APP_BASE_URL || '').trim().replace(/\/+$/, '');
+  const base = ((env.APP_BASE_URL || '').trim() || DEFAULT_SITE_ORIGIN).replace(/\/+$/, '');
   return {
-    realSend: isOn(env.MISSED_PUNCH_MAIL_ENABLED) && !isOn(env.MAIL_TEST_MODE) && !mailDisabled(env),
+    realSend: !isOn(env.MAIL_TEST_MODE) && !mailDisabled(env),
     outboxDir: path.resolve((env.MAIL_OUTBOX_DIR || '').trim() || './logs/mail-outbox'),
     link: `${base}${MAKEUP_PAGE_PATH}`,
   };
 }
 
+/** `date` (YYYY-MM-DD) moved by `days`. */
+function shiftDate(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map((part) => parseInt(part, 10));
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
 /** The Taipei calendar day before `now`, as YYYY-MM-DD. */
 export function previousTaipeiDate(now: Date = new Date()): string {
+  return shiftDate(taipeiToday(now), -1);
+}
+
+/** Has today's 23:30 check time passed (Taipei)? */
+export function pastNoticeTime(now: Date = new Date()): boolean {
+  return taipeiMinute(now).slice(11) >= NOTICE_TIME;
+}
+
+/**
+ * The 補打卡申請 cards cover the days before this date: up to yesterday, and
+ * up to today once today's 23:30 notice has gone out (so an employee who opens
+ * the link in that evening's mail finds the card).
+ */
+export function makeupCardsBefore(now: Date = new Date()): string {
+  const today = taipeiToday(now);
+  return pastNoticeTime(now) ? shiftDate(today, 1) : today;
+}
+
+/** Milliseconds until the next 23:30 Taipei (at least one second). */
+export function msUntilNextNoticeTime(now: Date = new Date()): number {
+  const [hh, mm] = NOTICE_TIME.split(':').map((part) => parseInt(part, 10));
   const [y, m, d] = taipeiToday(now).split('-').map((part) => parseInt(part, 10));
-  const prev = new Date(Date.UTC(y, m - 1, d - 1));
-  return prev.toISOString().slice(0, 10);
+  // 23:30 Taipei is 15:30 UTC on the same calendar day.
+  let target = Date.UTC(y, m - 1, d, hh - 8, mm, 0);
+  if (target <= now.getTime()) target += 24 * 60 * 60 * 1000;
+  return Math.max(target - now.getTime() + 1000, 1000);
 }
 
 /** Is `date` a working day in the office calendar? Throws when it cannot tell. */
@@ -236,16 +252,17 @@ export async function missingPunchCards(
   return cards;
 }
 
-/** mailer.send() returns { blocked: true } when the allowlist removed every recipient. */
+/** mailer.send() / sendMissedPunchNotice() return { blocked: true } when the allowlist removed every recipient. */
 function isBlocked(result: unknown): boolean {
   return typeof result === 'object' && result !== null && (result as { blocked?: unknown }).blocked === true;
 }
 
-export type Sender = (to: string, subject: string, text: string) => Promise<unknown>;
+/** Sends one notice; the schedule uses mailer.sendMissedPunchNotice. */
+export type Sender = (to: string, name: string, date: string, link: string) => Promise<unknown>;
 
 export type CheckReport = {
   date: string;
-  skipped: null | 'not-working-day' | 'calendar-unavailable' | 'already-running';
+  skipped: null | 'feature-off' | 'not-working-day' | 'calendar-unavailable' | 'already-running';
   notified: Array<{ id: string; channel: 'smtp' | 'outbox' }>;
   alreadyNotified: string[];
   failed: string[];
@@ -280,17 +297,27 @@ function failureCode(e: unknown): string {
 
 let running = false;
 
+/** Is the 未打卡通知信 feature on for `date` (judged at that day's 23:30)? */
+export function noticeFeatureOn(sqlPlugin: sql, date: string): boolean {
+  return isFeatureOn(sqlPlugin, 'missed_punch_notice', `${date} ${NOTICE_TIME}`);
+}
+
 /**
- * Check one day (default: yesterday in Taipei) and notify. Safe to run again
+ * Check one day (default: today in Taipei) and notify. Safe to run again
  * for the same day: people already notified are skipped. A failed send is
  * retried on the next run.
  */
 export async function runMissedPunchCheck(
   sqlPlugin: sql,
   log: Log,
-  options: { date?: string, now?: Date, sender?: Sender, config?: NoticeConfig, isWorkingDay?: (date: string) => Promise<boolean> } = {}
+  options: {
+    date?: string, now?: Date, sender?: Sender, config?: NoticeConfig,
+    isWorkingDay?: (date: string) => Promise<boolean>,
+    /** Defaults to the missed_punch_notice feature setting. */
+    featureOn?: (date: string) => boolean,
+  } = {}
 ): Promise<CheckReport> {
-  const date = options.date || previousTaipeiDate(options.now);
+  const date = options.date || taipeiToday(options.now);
   const report: CheckReport = { date, skipped: null, notified: [], alreadyNotified: [], failed: [], noEmail: [] };
   if (running) {
     report.skipped = 'already-running';
@@ -298,6 +325,11 @@ export async function runMissedPunchCheck(
   }
   running = true;
   try {
+    if (!(options.featureOn || ((d: string) => noticeFeatureOn(sqlPlugin, d)))(date)) {
+      report.skipped = 'feature-off';
+      log.logFormat(`Missed-punch check ${date}: the notice feature is not on for this day, skipped.`);
+      return report;
+    }
     const config = options.config || noticeConfig();
     let working: boolean;
     try {
@@ -332,7 +364,7 @@ export async function runMissedPunchCheck(
         let blocked = false;
         if (channel === 'smtp') {
           if (!options.sender) throw new Error('no sender configured');
-          const result = await options.sender(person.email, MISSED_PUNCH_SUBJECT, body);
+          const result = await options.sender(person.email, person.name, date, config.link);
           blocked = isBlocked(result);
         } else {
           writeOutbox(config.outboxDir, date, person.id, person.email, MISSED_PUNCH_SUBJECT, body);
@@ -357,26 +389,40 @@ export async function runMissedPunchCheck(
 }
 
 /**
- * Run the check at start-up and then every day just after 00:00 Taipei time.
- * MISSED_PUNCH_CHECK=0 turns the schedule off.
+ * The days a start-up run checks: yesterday (its 23:30 run may have been
+ * missed while the server was down) and today once 23:30 has passed.
+ */
+export function startupCheckDates(now: Date = new Date()): string[] {
+  const dates = [previousTaipeiDate(now)];
+  if (pastNoticeTime(now)) dates.push(taipeiToday(now));
+  return dates;
+}
+
+/**
+ * Check every day at 23:30 Taipei time, plus once at start-up (see
+ * startupCheckDates). MISSED_PUNCH_CHECK=0 turns the schedule off entirely;
+ * the feature setting decides per day whether anything is sent.
  */
 export function startMissedPunchSchedule(sqlPlugin: sql, log: logger, mail: mailer): void {
   if (/^(0|false|no|off)$/i.test((process.env.MISSED_PUNCH_CHECK || '').trim())) {
     log.logFormat('Missed-punch check is switched off (MISSED_PUNCH_CHECK).');
     return;
   }
-  const sender: Sender = (to, subject, text) => mail.send(to, subject, text);
-  const run = (): void => {
-    runMissedPunchCheck(sqlPlugin, log, { sender }).catch((e) => {
-      log.logFormat(`Missed-punch check failed: ${e instanceof Error ? e.message : String(e)}`);
-    });
+  const sender: Sender = (to, name, date, link) => mail.sendMissedPunchNotice(to, name, date, link);
+  // One day after another: runMissedPunchCheck refuses to overlap itself.
+  const run = async (dates: string[]): Promise<void> => {
+    for (const date of dates) {
+      try {
+        await runMissedPunchCheck(sqlPlugin, log, { date, sender });
+      } catch (e) {
+        log.logFormat(`Missed-punch check ${date} failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
   };
   const scheduleNext = (): void => {
     setTimeout(() => {
-      run();
-      scheduleNext();
-    }, msUntilNextTaipeiMidnight(new Date()));
+      void run([taipeiToday()]).finally(scheduleNext);
+    }, msUntilNextNoticeTime(new Date()));
   };
-  run();
-  scheduleNext();
+  void run(startupCheckDates()).finally(scheduleNext);
 }

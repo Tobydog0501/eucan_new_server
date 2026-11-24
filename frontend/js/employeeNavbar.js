@@ -47,6 +47,7 @@ $(function () {
 
     renderGreeting(username);
     loginCheck(userId, sessionKey);
+    applyFeatureFlags(); // 依功能管理的設定顯示導覽列項目
 
     $(document).on("click", "#logoutBtn", () => {
         deleteCookie("session");

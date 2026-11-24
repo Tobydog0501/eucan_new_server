@@ -237,6 +237,9 @@ async function startServer(options = {}) {
     SMTP_PORT: String(smtp.port),
     USER_MAIL: 'system@example.invalid',
     USER_PWD: 'fixture-smtp',
+    // 功能管理的預設值帶有上線日期；測試不應隨今天的日期改變結果，所以預設固定
+    // 補打卡開啟、未打卡通知關閉。要測功能管理本身時傳 FEATURE_OVERRIDES: ''。
+    FEATURE_OVERRIDES: 'makeup=on,missed_punch_notice=off',
     ...(options.env || {}),
   };
   const proc = spawn(process.execPath, [mainJs], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });

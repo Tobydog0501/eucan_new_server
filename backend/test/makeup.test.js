@@ -406,7 +406,7 @@ test('migration: make-up and notice steps run twice without error and keep old r
       p.exec(`CREATE TABLE clockinrecord (id TEXT NOT NULL,name TEXT NOT NULL,date DATETIME,num INT DEFAULT 1,clockin DATETIME,clockout DATETIME,deleted_at TEXT,deleted_by TEXT,delete_reason TEXT);
         CREATE TABLE clockin_punch_audit (audit_id INTEGER PRIMARY KEY);
         CREATE INDEX idx_clockinrecord_id_date ON clockinrecord (id, date);`);
-      assert.deepEqual(runMigrations(p).applied, [...NEW_STEPS, 'clockinrecord half-delete columns']);
+      assert.deepEqual(runMigrations(p).applied, [...NEW_STEPS, 'clockinrecord half-delete columns', 'feature_flag and feature_audit tables', 'announcement table']);
       assert.deepEqual(runMigrations(p).applied, []);
     } finally {
       p.close();

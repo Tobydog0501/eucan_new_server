@@ -179,6 +179,71 @@ const STEPS: Step[] = [
       return changed;
     },
   },
+  {
+    // 9. 功能管理：每個功能一筆設定（沒有設定時用程式登記的預設值），
+    //    每次修改寫一筆 feature_audit。
+    name: "feature_flag and feature_audit tables",
+    run: (db) => {
+      let changed = false;
+      if (!hasTable(db, "feature_flag")) {
+        db.exec(`
+          CREATE TABLE feature_flag (
+            key TEXT PRIMARY KEY,
+            enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+            start_at TEXT,
+            updated_by TEXT NOT NULL,
+            updated_by_name TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          );
+        `);
+        changed = true;
+      }
+      if (!hasTable(db, "feature_audit")) {
+        db.exec(`
+          CREATE TABLE feature_audit (
+            audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT NOT NULL,
+            enabled INTEGER NOT NULL,
+            start_at TEXT,
+            actor_id TEXT NOT NULL,
+            actor_name TEXT NOT NULL,
+            acted_at TEXT NOT NULL
+          );
+          CREATE INDEX idx_feature_audit_key ON feature_audit (key);
+        `);
+        changed = true;
+      }
+      return changed;
+    },
+  },
+  {
+    // 10. 公告：可排程發布與下架；刪除為軟刪除（deleted_at）。
+    name: "announcement table",
+    run: (db) => {
+      if (hasTable(db, "announcement")) return false;
+      db.exec(`
+        CREATE TABLE announcement (
+          announcement_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL,
+          body TEXT NOT NULL,
+          audience TEXT NOT NULL CHECK (audience IN ('all', 'employee', 'admin')),
+          publish_at TEXT NOT NULL,
+          expire_at TEXT,
+          pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
+          created_by TEXT NOT NULL,
+          created_by_name TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_by TEXT NOT NULL,
+          updated_by_name TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          deleted_at TEXT,
+          deleted_by TEXT
+        );
+        CREATE INDEX idx_announcement_publish ON announcement (publish_at);
+      `);
+      return true;
+    },
+  },
 ];
 
 /** Bring the schema up to date. Runs in one transaction: all steps or none. */

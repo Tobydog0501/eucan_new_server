@@ -102,4 +102,5 @@ function handleApproval(serialnum, permit) {
 
 $(function () {
     $("#navbar-container").load("../admin/navbar.html");
+    renderAnnouncementBoard("#announcement-board");
 });

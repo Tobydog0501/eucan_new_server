@@ -45,9 +45,6 @@ services:
     restart: always
     ports:
       - "3000:3000"
-    environment:
-      # 補打卡功能暫時隱藏，未打卡通知信（內含補打卡申請連結）一併關閉；要開回來刪掉這行。
-      MISSED_PUNCH_CHECK: "0"
     volumes:
       - "./backend/databases:/app/databases/"
       - "./backend/proofs:/app/proofs/"

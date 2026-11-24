@@ -39,6 +39,8 @@ function expectedBody(name, date, link) {
 }
 
 const LINK = 'https://test.example.invalid/employee/makeup.html';
+/** The 未打卡通知信 feature, forced on for the in-process runs (its own tests are below). */
+const ON = () => true;
 
 /**
  * Extra fixture people on top of the harness users (emp1, emp2 are employees;
@@ -104,26 +106,23 @@ function notices(file) {
   }
 }
 
-test('missed-punch notice: text is exactly the given wording; config is off by default', async () => {
+test('missed-punch notice: text is exactly the given wording; sending is on unless a test switch keeps it in the outbox', async () => {
   await withJob(async ({ job }) => {
     assert.equal(job.MISSED_PUNCH_SUBJECT, SUBJECT);
     assert.equal(job.missedPunchBody('王小明', '2026-03-02', LINK), expectedBody('王小明', '2026-03-02', LINK));
     assert.equal(job.noticeDateText('2026-03-02'), '2026年03月02日');
 
-    const off = job.noticeConfig({});
-    assert.equal(off.realSend, false);
-    assert.equal(off.link, '/employee/makeup.html');
-    assert.equal(job.noticeConfig({ MISSED_PUNCH_MAIL_ENABLED: '1' }).realSend, true);
-    assert.equal(job.noticeConfig({ MISSED_PUNCH_MAIL_ENABLED: 'true', MAIL_TEST_MODE: '1' }).realSend, false);
-    assert.equal(job.noticeConfig({ MISSED_PUNCH_MAIL_ENABLED: '0' }).realSend, false);
-    // MAIL_DISABLED=1 (#33's site-wide switch) overrides MISSED_PUNCH_MAIL_ENABLED.
-    assert.equal(job.noticeConfig({ MISSED_PUNCH_MAIL_ENABLED: '1', MAIL_DISABLED: '1' }).realSend, false);
-    assert.equal(job.noticeConfig({ MISSED_PUNCH_MAIL_ENABLED: '1', MAIL_TEST_MODE: '1', MAIL_DISABLED: '1' }).realSend, false);
-    assert.equal(job.noticeConfig({ MISSED_PUNCH_MAIL_ENABLED: '1', MAIL_DISABLED: '0' }).realSend, true);
+    const prod = job.noticeConfig({});
+    assert.equal(prod.realSend, true);
+    assert.equal(prod.link, 'https://eucan.ddns.net/employee/makeup.html');
+    assert.equal(job.noticeConfig({ MAIL_TEST_MODE: '1' }).realSend, false);
+    assert.equal(job.noticeConfig({ MAIL_TEST_MODE: 'true' }).realSend, false);
+    // MAIL_DISABLED=1 (#33's site-wide switch) keeps it in the outbox too.
     assert.equal(job.noticeConfig({ MAIL_DISABLED: '1' }).realSend, false);
+    assert.equal(job.noticeConfig({ MAIL_DISABLED: '0' }).realSend, true);
     assert.equal(job.noticeConfig({ APP_BASE_URL: 'https://test.example.invalid/' }).link, LINK);
 
-    // 00:30 in Taipei on 3 March checks 2 March.
+    // 00:30 in Taipei on 3 March: yesterday is 2 March.
     assert.equal(job.previousTaipeiDate(new Date('2026-03-02T16:30:00Z')), '2026-03-02');
     assert.equal(job.previousTaipeiDate(new Date('2026-03-01T15:59:00Z')), '2026-02-28');
   });
@@ -144,17 +143,17 @@ test('missed-punch notice: sending off -> only outbox files, no SMTP connection;
       const { mailer } = require(path.join(require('../testlib/harness').BUILD_DIR, 'plugins', 'mailer.js'));
       const real = new mailer();
       let senderCalls = 0;
-      const sender = (to, s, b) => { senderCalls++; return real.send(to, s, b); };
+      const sender = (to, n, d, l) => { senderCalls++; return real.sendMissedPunchNotice(to, n, d, l); };
       const outbox = path.join(cwd, 'logs', 'mail-outbox');
-      const config = job.noticeConfig({ MAIL_OUTBOX_DIR: outbox, APP_BASE_URL: 'https://test.example.invalid' });
+      const config = job.noticeConfig({ MAIL_TEST_MODE: '1', MAIL_OUTBOX_DIR: outbox, APP_BASE_URL: 'https://test.example.invalid' });
       const log = capture();
 
       // Weekend: nothing at all.
-      const weekend = await job.runMissedPunchCheck(db, log, { date: SATURDAY, sender, config });
+      const weekend = await job.runMissedPunchCheck(db, log, { date: SATURDAY, sender, config, featureOn: ON });
       assert.equal(weekend.skipped, 'not-working-day');
       assert.equal(fs.existsSync(outbox), false);
 
-      const report = await job.runMissedPunchCheck(db, log, { date: MONDAY, sender, config });
+      const report = await job.runMissedPunchCheck(db, log, { date: MONDAY, sender, config, featureOn: ON });
       assert.equal(report.skipped, null);
       assert.deepEqual(report.notified.map((n) => [n.id, n.channel]).sort(), [['emp1', 'outbox'], ['emp3', 'outbox'], ['emp8', 'outbox']]);
       assert.deepEqual(report.failed, []);
@@ -173,7 +172,7 @@ test('missed-punch notice: sending off -> only outbox files, no SMTP connection;
 
       // Same day again: nobody is notified twice, files stay as they were.
       const before = files.map((f) => fs.readFileSync(path.join(outbox, f), 'utf8'));
-      const again = await job.runMissedPunchCheck(db, log, { date: MONDAY, sender, config });
+      const again = await job.runMissedPunchCheck(db, log, { date: MONDAY, sender, config, featureOn: ON });
       assert.deepEqual(again.notified, []);
       assert.deepEqual(again.alreadyNotified.sort(), ['emp1', 'emp3', 'emp8']);
       assert.deepEqual(fs.readdirSync(outbox).sort().map((f) => fs.readFileSync(path.join(outbox, f), 'utf8')), before);
@@ -217,21 +216,21 @@ test('missed-punch notice: sending on -> mails through SMTP once; a failed send 
         process.env.USER_MAIL = 'system@example.invalid';
         process.env.USER_PWD = 'fixture-smtp';
         const m = new mailer();
-        return (to, s, b) => m.send(to, s, b);
+        return (to, n, d, l) => m.sendMissedPunchNotice(to, n, d, l);
       };
       const outbox = path.join(cwd, 'logs', 'mail-outbox');
-      const config = job.noticeConfig({ MISSED_PUNCH_MAIL_ENABLED: '1', MAIL_OUTBOX_DIR: outbox, APP_BASE_URL: 'https://test.example.invalid' });
+      const config = job.noticeConfig({ MAIL_OUTBOX_DIR: outbox, APP_BASE_URL: 'https://test.example.invalid' });
       assert.equal(config.realSend, true);
       const log = capture();
 
       // Server refuses: every notice fails and is recorded as failed.
-      const down = await job.runMissedPunchCheck(db, log, { date: TUESDAY, sender: mailerFor(smtpDown), config });
+      const down = await job.runMissedPunchCheck(db, log, { date: TUESDAY, sender: mailerFor(smtpDown), config, featureOn: ON });
       assert.deepEqual(down.notified, []);
       assert.deepEqual(down.failed.sort(), ['emp1', 'emp3', 'emp9']);
       assert.ok(notices(file).every((n) => n.status === 'failed' && n.channel === 'smtp'));
 
       // Next run: retried and delivered, one mail each.
-      const up = await job.runMissedPunchCheck(db, log, { date: TUESDAY, sender: mailerFor(smtpUp), config });
+      const up = await job.runMissedPunchCheck(db, log, { date: TUESDAY, sender: mailerFor(smtpUp), config, featureOn: ON });
       assert.deepEqual(up.notified.map((n) => [n.id, n.channel]).sort(), [['emp1', 'smtp'], ['emp3', 'smtp'], ['emp9', 'smtp']], log.lines.join(' | '));
       await smtpUp.waitForMessages(3);
       for (const id of ['emp1', 'emp3', 'emp9']) {
@@ -241,7 +240,7 @@ test('missed-punch notice: sending on -> mails through SMTP once; a failed send 
       assert.ok(notices(file).every((n) => n.status === 'sent'));
 
       // And not again.
-      const third = await job.runMissedPunchCheck(db, log, { date: TUESDAY, sender: mailerFor(smtpUp), config });
+      const third = await job.runMissedPunchCheck(db, log, { date: TUESDAY, sender: mailerFor(smtpUp), config, featureOn: ON });
       assert.deepEqual(third.notified, []);
       assert.equal(smtpUp.messages.length, 3);
       assert.equal(fs.existsSync(outbox), false, 'real sending writes no outbox files');
@@ -268,17 +267,17 @@ test('missed-punch notice: MAIL_DISABLED=1 in the process -> outbox only, even w
       seedDay(file, TUESDAY);
       const outbox = path.join(cwd, 'logs', 'mail-outbox');
       // Built without MAIL_DISABLED, so it asks for real sending...
-      const config = job.noticeConfig({ MISSED_PUNCH_MAIL_ENABLED: '1', MAIL_OUTBOX_DIR: outbox, APP_BASE_URL: 'https://test.example.invalid' });
+      const config = job.noticeConfig({ MAIL_OUTBOX_DIR: outbox, APP_BASE_URL: 'https://test.example.invalid' });
       assert.equal(config.realSend, true);
       // ...but the running process has the site-wide switch on.
       process.env.MAIL_DISABLED = '1';
       const { mailer } = require(path.join(require('../testlib/harness').BUILD_DIR, 'plugins', 'mailer.js'));
       const real = new mailer();
       let senderCalls = 0;
-      const sender = (to, s, b) => { senderCalls++; return real.send(to, s, b); };
+      const sender = (to, n, d, l) => { senderCalls++; return real.sendMissedPunchNotice(to, n, d, l); };
       const log = capture();
 
-      const report = await job.runMissedPunchCheck(db, log, { date: TUESDAY, sender, config });
+      const report = await job.runMissedPunchCheck(db, log, { date: TUESDAY, sender, config, featureOn: ON });
       assert.deepEqual(report.notified.map((n) => [n.id, n.channel]).sort(), [['emp1', 'outbox'], ['emp3', 'outbox'], ['emp9', 'outbox']]);
       assert.deepEqual(report.failed, []);
       assert.ok(notices(file).every((n) => n.channel === 'outbox' && n.status === 'sent'));
@@ -302,8 +301,8 @@ test('missed-punch notice: MAIL_DISABLED=1 in the process -> outbox only, even w
   }
 });
 
-test('missed-punch notice: backend with MAIL_DISABLED=1 and MISSED_PUNCH_MAIL_ENABLED=1 opens no SMTP connection at start-up', async () => {
-  const server = await startServer({ env: { MAIL_DISABLED: '1', MISSED_PUNCH_MAIL_ENABLED: '1' } });
+test('missed-punch notice: backend with MAIL_DISABLED=1 and the feature on opens no SMTP connection at start-up', async () => {
+  const server = await startServer({ env: { MAIL_DISABLED: '1', FEATURE_OVERRIDES: 'makeup=on,missed_punch_notice=on' } });
   try {
     await server.waitForOutput(/Missed-punch check \d{4}-\d{2}-\d{2}: /);
     await new Promise((r) => setTimeout(r, 500));
@@ -316,10 +315,10 @@ test('missed-punch notice: backend with MAIL_DISABLED=1 and MISSED_PUNCH_MAIL_EN
   }
 });
 
-test('missed-punch notice: the backend schedules the check at start-up, with sending off by default', async () => {
+test('missed-punch notice: the backend checks at start-up and sends nothing while the feature is off', async () => {
   const server = await startServer();
   try {
-    await server.waitForOutput(/Missed-punch check \d{4}-\d{2}-\d{2}: /);
+    await server.waitForOutput(/Missed-punch check \d{4}-\d{2}-\d{2}: the notice feature is not on/);
     assert.equal(server.smtp.messages.length, 0);
     assert.ok(!/Missed-punch notice [^\n]*: sent\./.test(server.output()), server.output());
     assert.equal(await server.alive(), true);
@@ -345,11 +344,11 @@ test('missed-punch notice on a test site: allowlisted people get the [TEST] mail
       seedDay(file, MONDAY);
       const { mailer } = require(path.join(require('../testlib/harness').BUILD_DIR, 'plugins', 'mailer.js'));
       const real = new mailer();
-      const sender = (to, s, b) => real.send(to, s, b);
+      const sender = (to, n, d, l) => real.sendMissedPunchNotice(to, n, d, l);
       const config = { ...job.noticeConfig({ APP_BASE_URL: 'https://test.example.invalid' }), realSend: true };
       const log = capture();
 
-      const report = await job.runMissedPunchCheck(db, log, { date: MONDAY, sender, config });
+      const report = await job.runMissedPunchCheck(db, log, { date: MONDAY, sender, config, featureOn: ON });
       assert.deepEqual(report.failed, []);
       assert.deepEqual(report.notified.map((n) => n.id).sort(), ['emp1', 'emp3', 'emp9']);
       const msgs = await smtp.waitForMessages(1);
@@ -366,7 +365,7 @@ test('missed-punch notice on a test site: allowlisted people get the [TEST] mail
       for (const line of ours) assert.ok(!line.includes('@'), line);
 
       // Dropped notices are recorded, so the next run does not try again.
-      const again = await job.runMissedPunchCheck(db, log, { date: MONDAY, sender, config });
+      const again = await job.runMissedPunchCheck(db, log, { date: MONDAY, sender, config, featureOn: ON });
       assert.deepEqual(again.notified, []);
       assert.equal(smtp.messages.length, 1);
     });

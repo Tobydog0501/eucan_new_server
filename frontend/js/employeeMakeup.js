@@ -74,7 +74,13 @@ $(function () {
         }).done((res) => {
             renderMissing(res.missing || []);
             renderMine(res.requests);
-        }).fail(() => {
+        }).fail((xhr) => {
+            const closed = xhr.status === 403 && xhr.responseJSON && xhr.responseJSON.message;
+            if (closed) {
+                // 功能管理裡「補打卡申請」還沒開放
+                $("#missing").empty().append($("<p>").addClass("text-muted mb-0").text(xhr.responseJSON.message));
+                return;
+            }
             $("#missing").empty().append($("<p>").addClass("text-danger mb-0").text("無法取得未打卡紀錄，請稍後再試。"));
             alert("無法取得補打卡資料，請稍後再試！");
         });
