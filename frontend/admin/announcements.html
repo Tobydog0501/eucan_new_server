@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>祐肯請假系統</title>
+    <link rel="icon" type="image/x-icon" href="../img/logo.ico">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link rel="stylesheet" href="../css/theme.css">
+    <link id="eucan-navbar-css" rel="stylesheet" href="../css/navbar.css">
+</head>
+
+<body>
+    <div id="navbar-container"></div>
+
+    <main class="eu-page">
+        <header class="eu-page-header">
+            <h1 class="eu-page-title">公告管理</h1>
+            <span class="eu-page-subtitle" id="now"></span>
+        </header>
+
+        <section class="eu-card" aria-labelledby="formTitle">
+            <h2 class="eu-section-title" id="formTitle">新增公告</h2>
+            <form id="announcementForm" novalidate>
+                <input type="hidden" id="announcementId">
+                <div class="mb-3">
+                    <label for="title" class="form-label">標題</label>
+                    <input type="text" id="title" class="form-control" maxlength="100" required>
+                </div>
+                <div class="mb-3">
+                    <label for="body" class="form-label">內容（純文字，換行會保留）</label>
+                    <textarea id="body" class="form-control" rows="5" maxlength="2000" required></textarea>
+                </div>
+                <div class="row g-3 mb-3">
+                    <div class="col-12 col-md-4">
+                        <label for="audience" class="form-label">公告對象</label>
+                        <select id="audience" class="form-select">
+                            <option value="all">全體</option>
+                            <option value="employee">員工</option>
+                            <option value="admin">主管／管理員</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label for="publishAt" class="form-label">發布時間</label>
+                        <input type="datetime-local" id="publishAt" class="form-control" required>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label for="expireAt" class="form-label">下架時間（選填）</label>
+                        <input type="datetime-local" id="expireAt" class="form-control">
+                    </div>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="pinned">
+                    <label class="form-check-label" for="pinned">置頂</label>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary" id="saveBtn">發布</button>
+                    <button type="button" class="btn btn-outline-secondary d-none" id="cancelBtn">取消編輯</button>
+                </div>
+            </form>
+        </section>
+
+        <h2 class="eu-section-title">公告列表</h2>
+        <div class="eu-card eu-card-flush">
+            <div class="table-responsive">
+                <table class="table table-striped align-middle">
+                    <thead>
+                        <tr>
+                            <th>狀態</th>
+                            <th>標題</th>
+                            <th>對象</th>
+                            <th>發布時間</th>
+                            <th>下架時間</th>
+                            <th>最後修改</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="announcements"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script src="../js/jquery-3.7.1.min.js"></script>
+    <script src="../js/cookieOperation.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <script src="../js/adminAnnouncements.js"></script>
+</body>
+
+</html>

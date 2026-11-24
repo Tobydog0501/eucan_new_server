@@ -637,3 +637,132 @@ textarea.form-control {
 .eu-toolbar > div:empty {
 	display: none;
 }
+
+/* 公告（員工首頁、主管首頁） */
+.eu-announcements {
+	border-left: 4px solid var(--eu-brand);
+}
+
+.eu-announcement + .eu-announcement {
+	border-top: 1px solid var(--eu-border);
+	margin-top: var(--eu-space-3);
+	padding-top: var(--eu-space-3);
+}
+
+.eu-announcement-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--eu-space-2);
+	margin-bottom: var(--eu-space-1);
+}
+
+.eu-announcement-title {
+	font-size: 1.05rem;
+	font-weight: 600;
+	color: var(--eu-ink);
+	margin: 0;
+}
+
+.eu-announcement-pin {
+	font-size: 0.75rem;
+	color: var(--eu-brand);
+	background: var(--eu-brand-soft);
+	border-radius: var(--eu-radius-pill);
+	padding: 0.1rem 0.5rem;
+}
+
+.eu-announcement-date {
+	font-size: var(--eu-fs-sm);
+	color: var(--eu-muted);
+	margin-left: auto;
+}
+
+.eu-announcement-body {
+	white-space: pre-line;
+	overflow-wrap: anywhere;
+	margin: 0;
+	color: var(--eu-text);
+}
+
+/* 功能管理（發布卡片） */
+.eu-release-intro {
+	color: var(--eu-muted);
+	font-size: var(--eu-fs-sm);
+}
+
+.eu-release-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--eu-space-2) var(--eu-space-4);
+	margin-bottom: var(--eu-space-2);
+}
+
+.eu-release-name {
+	font-size: 1.15rem;
+	font-weight: 600;
+	color: var(--eu-ink);
+	margin: 0;
+}
+
+.eu-release-status {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--eu-space-2);
+}
+
+.eu-release-pill {
+	font-size: var(--eu-fs-sm);
+	font-weight: 600;
+	border-radius: var(--eu-radius-pill);
+	padding: 0.2rem 0.75rem;
+	border: 1px solid transparent;
+}
+
+.eu-release-pill.is-live { background: var(--eu-success-soft); color: var(--eu-success); }
+.eu-release-pill.is-scheduled { background: var(--eu-warning-soft); color: var(--eu-warning); }
+.eu-release-pill.is-off { background: var(--eu-surface-alt); color: var(--eu-text); border-color: var(--eu-border-strong); }
+.eu-release-pill.is-developing { background: var(--eu-surface); color: var(--eu-muted); border-color: var(--eu-border-strong); border-style: dashed; }
+
+.eu-release-when {
+	font-size: var(--eu-fs-sm);
+	color: var(--eu-muted);
+}
+
+.eu-release-desc {
+	color: var(--eu-text);
+	margin-bottom: var(--eu-space-2);
+}
+
+.eu-release-meta,
+.eu-release-updated {
+	font-size: var(--eu-fs-sm);
+	color: var(--eu-muted);
+	margin-bottom: var(--eu-space-3);
+}
+
+.eu-release-updated {
+	margin: var(--eu-space-3) 0 0;
+}
+
+.eu-release-warning {
+	font-size: var(--eu-fs-sm);
+	color: var(--eu-danger);
+	background: var(--eu-danger-soft);
+	border-radius: var(--eu-radius-sm);
+	padding: var(--eu-space-2) var(--eu-space-3);
+}
+
+.eu-release-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--eu-space-2);
+}
+
+.eu-preline {
+	white-space: pre-line;
+	overflow-wrap: anywhere;
+}

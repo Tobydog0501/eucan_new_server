@@ -11,10 +11,13 @@ import { aggregateDay, ClockEdit, decideEdit, isRealDate, taipeiToday } from './
 import { personalClockinPdf, readMasterClockinPdf, writeClockinMaster } from './plugins/clockin_archive';
 import { canDeletePunch, canRestorePunch, canReviewMakeup } from './plugins/account_rules';
 import { departmentOf, kindsOverlap, MAKEUP_KIND_LABELS, MAKEUP_REASON_MAX, checkMakeupTime, makeupFromCard, validateMakeupCard } from './plugins/makeup';
-import { missingPunchCards, startMissedPunchSchedule, WORK_END, WORK_START } from './plugins/missed_punch';
+import { makeupCardsBefore, missingPunchCards, startMissedPunchSchedule, WORK_END, WORK_START } from './plugins/missed_punch';
 import type { MissingPunchCard } from './plugins/missed_punch';
-import type { MakeupRequestRow, MakeupState, PunchPart } from './plugins/sql';
+import type { AnnouncementRow, MakeupRequestRow, MakeupState, PunchPart } from './plugins/sql';
 import { onDownloadDone } from './plugins/http_util';
+import { applyReleaseAction, describeChange, FEATURES, featureActiveAt, featureDefinition, featureOverrides, isFeatureKey, isFeatureOn, releaseState, settingOf, taipeiMinute } from './plugins/features';
+import type { FeatureDefinition, FeatureSetting } from './plugins/features';
+import { announcementView, audiencesFor, validateAnnouncement } from './plugins/announcements';
 import path from 'path';
 import fs from 'fs';
 
@@ -735,8 +738,12 @@ app.get('/api/makeup/mine', async (req: Request, res: Response) => {
       res.sendStatus(403);
       return;
     }
+    if (!isFeatureOn(sqlPlugin, 'makeup')) {
+      res.status(403).json({ message: '補打卡功能尚未開放' });
+      return;
+    }
     const today = taipeiToday();
-    const missing = await missingPunchCards(sqlPlugin, user.id, { today });
+    const missing = await missingPunchCards(sqlPlugin, user.id, { today: makeupCardsBefore() });
     res.json({
       applicant: { name: user.name, department: departmentOf(user.mgroup) },
       today,
@@ -764,7 +771,12 @@ app.post('/api/makeup/apply', async (req: Request, res: Response) => {
       res.sendStatus(403);
       return;
     }
-    const today = taipeiToday();
+    if (!isFeatureOn(sqlPlugin, 'makeup')) {
+      res.status(403).json({ message: '補打卡功能尚未開放' });
+      return;
+    }
+    // Cards end yesterday, or today once the 23:30 notice has gone out.
+    const today = makeupCardsBefore();
     const checked = validateMakeupCard(body, today);
     if (!checked.ok) {
       res.status(400).json({ message: checked.message });
@@ -926,6 +938,188 @@ app.post('/api/makeup/review', async (req: Request, res: Response) => {
       }
     }
     res.status(200).json({ status: result.request.state, request: makeupView(result.request), masterRefreshed });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    if (!res.headersSent) res.sendStatus(500);
+  }
+});
+
+// ---- 功能管理（feature flags） ------------------------------------------
+
+/** account / cookie from the query (GET) or the JSON body (POST). */
+function credentials(req: Request): { account: string, cookie: string } {
+  const source = (req.method === 'GET' ? req.query : (req.body && typeof req.body === 'object' ? req.body : {})) as { [key: string]: unknown };
+  const account = source['account'];
+  const cookie = source['cookie'];
+  return { account: typeof account === 'string' ? account : '', cookie: typeof cookie === 'string' ? cookie : '' };
+}
+
+/** The signed-in caller, or null after answering 400 / 403. `admin` requires an admin account. */
+function caller(req: Request, res: Response, admin: boolean): { id: string, name: string, type: string } | null {
+  const { account, cookie } = credentials(req);
+  if (!account || !cookie) {
+    res.sendStatus(400);
+    return null;
+  }
+  const ret = sqlPlugin.checkHash(account, cookie);
+  if (ret == null || (admin && ret['accountType'] !== 'admin')) {
+    res.sendStatus(403);
+    return null;
+  }
+  return { id: account, name: ret['name'] || account, type: ret['accountType'] };
+}
+
+function featureView(definition: FeatureDefinition, minute: string) {
+  const row = sqlPlugin.featureFlag(definition.key);
+  const setting = settingOf(definition.key, row);
+  const forced = featureOverrides().get(definition.key);
+  const state = releaseState(definition, setting, minute);
+  return {
+    key: definition.key,
+    name: definition.name,
+    description: definition.description,
+    ready: definition.ready,
+    state,
+    // 已排定：預計上線時間；已上線：上線時間（立即上線的沒有時間，改用最後修改時間）。
+    launchAt: state === 'scheduled' || state === 'live' ? setting.startAt : null,
+    live: featureActiveAt(definition.key, row, minute),
+    forced: forced === undefined ? null : forced,
+    updatedByName: row ? row.updated_by_name : null,
+    updatedAt: row ? row.updated_at : null,
+  };
+}
+
+/** The change log as sentences, newest first. */
+function featureHistory() {
+  const names = new Map(FEATURES.map((f) => [f.key as string, f.name]));
+  const previous = new Map<string, FeatureSetting>();
+  const lines = sqlPlugin.featureAudit().map((a) => {
+    const after: FeatureSetting = { enabled: a.enabled === 1, startAt: a.start_at };
+    const text = describeChange(previous.get(a.key) || null, after, a.acted_at.slice(0, 16));
+    previous.set(a.key, after);
+    return { key: a.key, name: names.get(a.key) || a.key, text, actorName: a.actor_name, actedAt: a.acted_at };
+  });
+  return lines.reverse();
+}
+
+// Which features are live right now, for any signed-in page (navbar entries).
+app.get('/api/features', (req: Request, res: Response) => {
+  try {
+    if (!caller(req, res, false)) return;
+    const minute = taipeiMinute();
+    const features: { [key: string]: boolean } = {};
+    for (const f of FEATURES) features[f.key] = isFeatureOn(sqlPlugin, f.key, minute);
+    res.json({ now: minute, features });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
+});
+
+app.get('/api/features/manage', (req: Request, res: Response) => {
+  try {
+    if (!caller(req, res, true)) return;
+    const minute = taipeiMinute();
+    res.json({ now: minute, features: FEATURES.map((f) => featureView(f, minute)), history: featureHistory() });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
+});
+
+// 主管的發布操作：schedule（排定／改上線時間）、launch（立即上線）、stop（取消排定或下架）。
+app.post('/api/features/release', (req: Request, res: Response) => {
+  try {
+    const actor = caller(req, res, true);
+    if (!actor) return;
+    const body = req.body as { [key: string]: unknown };
+    const key = body['key'];
+    if (!isFeatureKey(key)) {
+      res.status(400).json({ message: '找不到這個功能' });
+      return;
+    }
+    const minute = taipeiMinute();
+    const result = applyReleaseAction(featureDefinition(key), body['action'], body['launchAt'], minute);
+    if (!result.ok) {
+      res.status(result.status).json({ message: result.message });
+      return;
+    }
+    sqlPlugin.setFeatureFlag(key, result.setting.enabled, result.setting.startAt, actor);
+    log.logFormat(`${actor.id} release ${key}: ${String(body['action'])}${result.setting.startAt ? ` at ${result.setting.startAt}` : ''}.`);
+    res.json({ feature: featureView(featureDefinition(key), minute) });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    if (!res.headersSent) res.sendStatus(500);
+  }
+});
+
+// ---- 公告 -----------------------------------------------------------------
+
+// Announcements in force now for the caller's account type.
+app.get('/api/announcements', (req: Request, res: Response) => {
+  try {
+    const user = caller(req, res, false);
+    if (!user) return;
+    const minute = taipeiMinute();
+    res.json({ announcements: sqlPlugin.visibleAnnouncements(minute, audiencesFor(user.type)).map((a) => announcementView(a, minute)) });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
+});
+
+app.get('/api/announcements/manage', (req: Request, res: Response) => {
+  try {
+    if (!caller(req, res, true)) return;
+    const minute = taipeiMinute();
+    res.json({ now: minute, announcements: sqlPlugin.announcements().map((a) => announcementView(a, minute)) });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    res.sendStatus(500);
+  }
+});
+
+app.post('/api/announcements/save', (req: Request, res: Response) => {
+  try {
+    const actor = caller(req, res, true);
+    if (!actor) return;
+    const body = req.body as { [key: string]: unknown };
+    const checked = validateAnnouncement(body);
+    if (!checked.ok) {
+      res.status(400).json({ message: checked.message });
+      return;
+    }
+    const rawId = body['id'];
+    let id: number;
+    if (rawId == null || rawId === '') {
+      id = sqlPlugin.createAnnouncement(checked.value, actor);
+      log.logFormat(`${actor.id} created announcement #${id}.`);
+    } else {
+      id = Number(rawId);
+      if (!Number.isInteger(id) || id <= 0 || !sqlPlugin.updateAnnouncement(id, checked.value, actor)) {
+        res.status(404).json({ message: '找不到這則公告' });
+        return;
+      }
+      log.logFormat(`${actor.id} updated announcement #${id}.`);
+    }
+    res.json({ announcement: announcementView(sqlPlugin.getAnnouncement(id) as AnnouncementRow, taipeiMinute()) });
+  } catch (e) {
+    log.logFormat((e as string), new Date());
+    if (!res.headersSent) res.sendStatus(500);
+  }
+});
+
+app.post('/api/announcements/delete', (req: Request, res: Response) => {
+  try {
+    const actor = caller(req, res, true);
+    if (!actor) return;
+    const id = Number((req.body as { [key: string]: unknown })['id']);
+    if (!Number.isInteger(id) || id <= 0 || !sqlPlugin.deleteAnnouncement(id, actor)) {
+      res.status(404).json({ message: '找不到這則公告' });
+      return;
+    }
+    log.logFormat(`${actor.id} deleted announcement #${id}.`);
+    res.json({ status: 'deleted' });
   } catch (e) {
     log.logFormat((e as string), new Date());
     if (!res.headersSent) res.sendStatus(500);

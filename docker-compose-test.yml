@@ -40,8 +40,6 @@ services:
       TOTP_VALIDATE_URL: "http://127.0.0.1:1/disabled"
       SECRET: "test-not-a-secret"
       CALENDAR_DOWNLOAD_DISABLED: "1"
-      # 補打卡功能暫時隱藏，未打卡通知信（內含補打卡申請連結）一併關閉；要開回來刪掉這行。
-      MISSED_PUNCH_CHECK: "0"
     volumes:
       - "./testenv/databases:/app/databases/"
       - "./testenv/proofs:/app/proofs/"

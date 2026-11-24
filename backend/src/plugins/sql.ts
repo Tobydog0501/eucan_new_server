@@ -9,6 +9,8 @@ import { join } from "path";
 import { DAYOFF_COLUMNS, dayoffColumnFor, leaveColumn } from "./leave_types";
 import { runMigrations } from "./migrations";
 import { kindsOverlap, MakeupInput, MakeupKind } from "./makeup";
+import type { FeatureFlagRow } from "./features";
+import { FEATURES, SYSTEM_ACTOR } from "./features";
 // const logger = require("./logger.js");
 const log: logger = new logger(`./logs/${new Date().toISOString().split('T')[0]}.log`);
 
@@ -28,6 +30,7 @@ export class sql {
     if (applied.length > 0) {
       log.logFormat(`Database migrations applied: ${applied.join("; ")}.`, new Date());
     }
+    this.ensureFeatureFlags();
     log.logFormat("Database is connected with server.", new Date());
   }
 
@@ -1202,6 +1205,93 @@ export class sql {
     ).run(requestId, action, actor.id, actor.name, reason);
   }
 
+  // ---- 功能管理（feature flags） -----------------------------------------
+
+  featureFlag(key: string): FeatureFlagRow | undefined {
+    return this.login_db.prepare(`SELECT * FROM feature_flag WHERE key = ?;`).get(key) as FeatureFlagRow | undefined;
+  }
+
+  /** Save one feature's setting and its audit row in one transaction. */
+  setFeatureFlag(key: string, enabled: boolean, startAt: string | null, actor: { id: string, name: string }): void {
+    this.login_db.transaction(() => {
+      this.login_db.prepare(
+        `INSERT INTO feature_flag (key, enabled, start_at, updated_by, updated_by_name, updated_at)
+         VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'))
+         ON CONFLICT(key) DO UPDATE SET enabled = excluded.enabled, start_at = excluded.start_at,
+           updated_by = excluded.updated_by, updated_by_name = excluded.updated_by_name, updated_at = excluded.updated_at;`
+      ).run(key, enabled ? 1 : 0, startAt, actor.id, actor.name);
+      this.login_db.prepare(
+        `INSERT INTO feature_audit (key, enabled, start_at, actor_id, actor_name, acted_at)
+         VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'));`
+      ).run(key, enabled ? 1 : 0, startAt, actor.id, actor.name);
+    })();
+  }
+
+  /** Oldest first (the page turns consecutive rows into sentences). */
+  featureAudit(): FeatureAuditRow[] {
+    return this.login_db.prepare(`SELECT * FROM feature_audit ORDER BY audit_id;`).all() as FeatureAuditRow[];
+  }
+
+  /**
+   * A newly registered feature gets its first-start setting (and an audit row
+   * by 系統初始設定), so every setting on the page has a recorded origin.
+   */
+  private ensureFeatureFlags(): void {
+    for (const f of FEATURES) {
+      if (this.featureFlag(f.key)) continue;
+      this.setFeatureFlag(f.key, f.initialLaunchAt != null, f.initialLaunchAt, SYSTEM_ACTOR);
+    }
+  }
+
+  // ---- 公告 ---------------------------------------------------------------
+
+  /** Every announcement not deleted, newest publish time first (management page). */
+  announcements(): AnnouncementRow[] {
+    return this.login_db.prepare(
+      `SELECT * FROM announcement WHERE deleted_at IS NULL ORDER BY publish_at DESC, announcement_id DESC;`
+    ).all() as AnnouncementRow[];
+  }
+
+  /** Announcements in force at `minute` for these audiences: pinned first, then newest. */
+  visibleAnnouncements(minute: string, audiences: string[]): AnnouncementRow[] {
+    const marks = audiences.map(() => '?').join(',');
+    return this.login_db.prepare(
+      `SELECT * FROM announcement
+       WHERE deleted_at IS NULL AND publish_at <= ? AND (expire_at IS NULL OR expire_at > ?) AND audience IN (${marks})
+       ORDER BY pinned DESC, publish_at DESC, announcement_id DESC;`
+    ).all(minute, minute, ...audiences) as AnnouncementRow[];
+  }
+
+  getAnnouncement(id: number): AnnouncementRow | undefined {
+    return this.login_db.prepare(`SELECT * FROM announcement WHERE announcement_id = ? AND deleted_at IS NULL;`).get(id) as AnnouncementRow | undefined;
+  }
+
+  createAnnouncement(input: AnnouncementInput, actor: { id: string, name: string }): number {
+    const result = this.login_db.prepare(
+      `INSERT INTO announcement (title, body, audience, publish_at, expire_at, pinned, created_by, created_by_name, created_at, updated_by, updated_by_name, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'), ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'));`
+    ).run(input.title, input.body, input.audience, input.publishAt, input.expireAt, input.pinned ? 1 : 0, actor.id, actor.name, actor.id, actor.name);
+    return Number(result.lastInsertRowid);
+  }
+
+  /** False when the announcement does not exist (or was deleted). */
+  updateAnnouncement(id: number, input: AnnouncementInput, actor: { id: string, name: string }): boolean {
+    const result = this.login_db.prepare(
+      `UPDATE announcement SET title = ?, body = ?, audience = ?, publish_at = ?, expire_at = ?, pinned = ?,
+         updated_by = ?, updated_by_name = ?, updated_at = strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours')
+       WHERE announcement_id = ? AND deleted_at IS NULL;`
+    ).run(input.title, input.body, input.audience, input.publishAt, input.expireAt, input.pinned ? 1 : 0, actor.id, actor.name, id);
+    return result.changes > 0;
+  }
+
+  deleteAnnouncement(id: number, actor: { id: string }): boolean {
+    const result = this.login_db.prepare(
+      `UPDATE announcement SET deleted_at = strftime('%Y-%m-%d %H:%M:%S', 'now', '+8 hours'), deleted_by = ?
+       WHERE announcement_id = ? AND deleted_at IS NULL;`
+    ).run(actor.id, id);
+    return result.changes > 0;
+  }
+
   // ---- Missed-punch notice de-duplication -------------------------------
 
   /**
@@ -1286,6 +1376,45 @@ export type PunchRow = {
   deletedClockout: string | null;
   makeup: boolean;
   makeupRequestId: number | null;
+};
+
+export type FeatureAuditRow = {
+  audit_id: number;
+  key: string;
+  enabled: number;
+  start_at: string | null;
+  actor_id: string;
+  actor_name: string;
+  acted_at: string;
+};
+
+export type AnnouncementAudience = "all" | "employee" | "admin";
+
+export type AnnouncementInput = {
+  title: string;
+  body: string;
+  audience: AnnouncementAudience;
+  publishAt: string;
+  expireAt: string | null;
+  pinned: boolean;
+};
+
+export type AnnouncementRow = {
+  announcement_id: number;
+  title: string;
+  body: string;
+  audience: AnnouncementAudience;
+  publish_at: string;
+  expire_at: string | null;
+  pinned: number;
+  created_by: string;
+  created_by_name: string;
+  created_at: string;
+  updated_by: string;
+  updated_by_name: string;
+  updated_at: string;
+  deleted_at: string | null;
+  deleted_by: string | null;
 };
 
 export type MakeupState = "pending" | "approved" | "rejected";

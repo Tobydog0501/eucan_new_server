@@ -83,3 +83,51 @@ function loginCheck(userId,sessionKey){
         window.location = window.location.origin;
     });
 }
+
+// 功能管理：導覽列裡標了 data-feature="功能代碼" 的項目預設隱藏（d-none），
+// 這裡向後端問目前開啟的功能，開啟的才顯示。navbar.html 載入後呼叫。
+function applyFeatureFlags(root) {
+	const userId = readCookie("id");
+	const sessionKey = readCookie("session");
+	if (!userId || !sessionKey) return;
+	$.ajax({
+		url: `${EUCAN_API_BASE}/api/features`,
+		type: "GET",
+		dataType: "json",
+		data: { account: userId, cookie: sessionKey },
+	}).done((res) => {
+		const features = (res && res.features) || {};
+		$(root || document).find("[data-feature]").each(function () {
+			$(this).toggleClass("d-none", features[$(this).attr("data-feature")] !== true);
+		});
+	});
+}
+
+// 公告：把目前生效的公告畫進 selector 指定的區塊；沒有公告時整個區塊隱藏。
+// 內文是純文字，用 text() 顯示，換行保留（CSS white-space: pre-line）。
+function renderAnnouncementBoard(selector) {
+	const box = $(selector);
+	const userId = readCookie("id");
+	const sessionKey = readCookie("session");
+	if (!box.length || !userId || !sessionKey) return;
+	$.ajax({
+		url: `${EUCAN_API_BASE}/api/announcements`,
+		type: "GET",
+		dataType: "json",
+		data: { account: userId, cookie: sessionKey },
+	}).done((res) => {
+		const list = (res && res.announcements) || [];
+		const items = box.find(".eu-announcement-list").empty();
+		list.forEach((a) => {
+			const head = $("<div>").addClass("eu-announcement-head");
+			if (a.pinned) head.append($("<span>").addClass("eu-announcement-pin").text("置頂"));
+			head.append($("<h3>").addClass("eu-announcement-title").text(a.title));
+			head.append($("<span>").addClass("eu-announcement-date").text((a.publishAt || "").slice(0, 10)));
+			items.append($("<article>").addClass("eu-announcement").append(
+				head,
+				$("<p>").addClass("eu-announcement-body").text(a.body)
+			));
+		});
+		box.toggleClass("d-none", list.length === 0);
+	});
+}

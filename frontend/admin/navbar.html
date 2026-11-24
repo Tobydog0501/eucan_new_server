@@ -45,7 +45,15 @@
             <ul class="dropdown-menu" aria-labelledby="navAttendanceDropdown">
               <li><a class="dropdown-item" href="./calendar.html">行事曆</a></li>
               <li><a class="dropdown-item" href="./record.html">打卡紀錄</a></li>
-              <li class="d-none"><a class="dropdown-item" href="./makeup.html">補登審核</a></li><!-- 補登功能暫時隱藏 -->
+              <li class="d-none" data-feature="makeup"><a class="dropdown-item" href="./makeup.html">補登審核</a></li>
+            </ul>
+          </li>
+          <li class="nav-item dropdown d-none d-lg-block">
+            <a class="nav-link dropdown-toggle" href="#" id="navSystemDropdown" role="button"
+              data-bs-toggle="dropdown" aria-expanded="false">系統</a>
+            <ul class="dropdown-menu" aria-labelledby="navSystemDropdown">
+              <li><a class="dropdown-item" href="./announcements.html">公告管理</a></li>
+              <li><a class="dropdown-item" href="./features.html">功能管理</a></li>
             </ul>
           </li>
 
@@ -70,8 +78,14 @@
           <li class="nav-item d-lg-none">
             <a class="nav-link" href="./record.html">打卡紀錄</a>
           </li>
-          <li class="nav-item d-none"><!-- 補登功能暫時隱藏 -->
+          <li class="nav-item d-lg-none d-none" data-feature="makeup">
             <a class="nav-link" href="./makeup.html">補登審核</a>
+          </li>
+          <li class="nav-item d-lg-none">
+            <a class="nav-link" href="./announcements.html">公告管理</a>
+          </li>
+          <li class="nav-item d-lg-none">
+            <a class="nav-link" href="./features.html">功能管理</a>
           </li>
         </ul>
         <div class="navbar-actions">

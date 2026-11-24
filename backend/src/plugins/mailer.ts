@@ -15,10 +15,33 @@ function smtpPort(): number {
 
 /**
  * MAIL_DISABLED=1 (test sites): never open an SMTP connection or send mail.
- * This overrides every other mail switch, including MISSED_PUNCH_MAIL_ENABLED.
+ * This overrides every other mail switch, including the 未打卡通知信 feature.
  */
 export function mailDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
     return env.MAIL_DISABLED === "1";
+}
+
+/** 未打卡通知信主旨。 */
+export const MISSED_PUNCH_SUBJECT = '祐肯企業上下班未打卡系統通知';
+
+/** "2026-03-02" -> "2026年03月02日" */
+export function noticeDateText(date: string): string {
+    const [year, month, day] = date.split('-');
+    return `${year}年${month}月${day}日`;
+}
+
+/** 未打卡通知信內文：固定文字填入姓名與日期，信末附補打卡申請頁連結。 */
+export function missedPunchBody(name: string, date: string, link: string): string {
+    return [
+        `員工 ${name}您好：`,
+        `經系統查核，發現您於 ${noticeDateText(date)} 有未打卡紀錄，請確認當日出勤狀況。`,
+        '如因忘記打卡、系統異常或其他特殊原因而未完成打卡，請儘速填寫補打卡申請，並註明實際上班或下班時間及未打卡原因，由人資單位協助辦理補打卡作業。',
+        '請同仁確實落實每日上下班打卡，以維護出勤紀錄之正確性。',
+        '感謝您的配合！',
+        '<此信為系統自動發送，請勿回覆>',
+        '',
+        `補打卡申請頁：${link}`,
+    ].join('\n');
 }
 
 export class mailer{
@@ -103,6 +126,14 @@ export class mailer{
         };
         const ret = await this.transporter.sendMail(message);
         return new Promise(res=>{res(ret)});
+    }
+
+    /**
+     * 寄未打卡通知信給一位員工。date 為 "YYYY-MM-DD"，link 為補打卡申請頁網址。
+     * 經由 send()，所以 MAIL_DISABLED 與測試站收件者白名單一樣有效。
+     */
+    async sendMissedPunchNotice(mail:string,name:string,date:string,link:string):Promise<any>{
+        return this.send(mail, MISSED_PUNCH_SUBJECT, missedPunchBody(name, date, link));
     }
 
 }

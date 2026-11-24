@@ -39,9 +39,6 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: always
-    environment:
-      # 補打卡功能暫時隱藏，未打卡通知信（內含補打卡申請連結）一併關閉；要開回來刪掉這行。
-      MISSED_PUNCH_CHECK: "0"
     volumes:
       # .env is no longer baked into the image (backend/.dockerignore); mount it read-only.
       - "./backend/.env:/app/.env:ro"
